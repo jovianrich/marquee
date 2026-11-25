@@ -35,8 +35,7 @@ header{position:sticky;top:0;z-index:5;background:var(--bg);
 .top{display:flex;align-items:center;justify-content:space-between;gap:12px}
 h1{margin:0;font-size:26px;letter-spacing:.14em;text-transform:uppercase;font-weight:800;color:var(--accent)}
 .iconbtn{border:0;background:var(--chip);width:40px;height:40px;border-radius:20px;font-size:18px}
-.tabs{display:flex;gap:6px;overflow-x:auto;padding:12px 0 10px;scrollbar-width:none}
-.tabs::-webkit-scrollbar{display:none}
+.tabs{display:flex;flex-wrap:wrap;gap:6px;padding:12px 0 10px}
 .tab{flex:0 0 auto;border:1px solid var(--line);background:transparent;border-radius:999px;
   padding:7px 13px;font-size:14px;font-weight:600;color:var(--muted);white-space:nowrap}
 .tab.on{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
@@ -193,9 +192,30 @@ function store(m){
   }
   return null;
 }
+const norm = s => String(s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+  .replace(/\s*[\(\[][^\)\]]*[\)\]]\s*/g, ' ').replace(/&/g, ' and ').replace(/[^a-z0-9]+/g, ' ')
+  .trim().replace(/^(the|a|an) /, '');
+let appleIdx = new Map();
+function buildApple(){
+  appleIdx = new Map();
+  for (const row of S.jf.apple || []) {
+    const i = row.indexOf('\t'), key = norm(row.slice(i + 1));
+    if (!key) continue;
+    if (!appleIdx.has(key)) appleIdx.set(key, []);
+    appleIdx.get(key).push(Number(row.slice(0, i)) || 0);
+  }
+}
+/* Where a copy already lives: 'Jellyfin', 'Apple', a manual choice, or '' */
+function owned(m){
+  if (S.jf.items && S.jf.items[String(m.id)]) return 'Jellyfin';
+  const years = appleIdx.get(norm(m.title)), y = Number(m.year) || 0;
+  if (years && years.some(a => !a || !y || Math.abs(a - y) <= 1)) return 'Apple';
+  return m.owned || '';
+}
+const OWNED_LABEL = { Jellyfin: 'At home in Jellyfin', Apple: 'In your Apple library', Disc: 'Owned on disc', Other: 'Owned' };
 function classify(m){
   if (m.watched) return 'watched';
-  if (S.jf.items && S.jf.items[String(m.id)]) return 'home';
+  if (owned(m)) return 'home';
   if (subs(m).some(x => isMine(x.n))) return 'stream';
   if (store(m)) return 'rent';
   return 'hunt';
@@ -251,7 +271,7 @@ function listen(){
     S.ready = true; render(); refreshStale();
   }, fail);
   onSnapshot(doc(db, 'config', 'app'), d => { S.config = d.data() || {}; render(); refreshStale(); }, fail);
-  onSnapshot(doc(db, 'jellyfin', 'library'), d => { S.jf = d.data() || { items:{} }; render(); }, () => {});
+  onSnapshot(doc(db, 'jellyfin', 'library'), d => { S.jf = d.data() || { items:{} }; buildApple(); render(); }, () => {});
 }
 async function addMovie(id){
   if (S.movies.has(String(id))) { toast('Already on the list'); return; }
@@ -303,7 +323,7 @@ function render(){
   if (!S.tabChosen) S.tab = (TABS.find(t => t.id !== 'watched' && groups[t.id].length) || TABS[1]).id;
   const list = groups[S.tab];
   const emptyText = {
-    home: 'Nothing from your list is in Jellyfin yet.',
+    home: 'Nothing on your list is in Jellyfin or your Apple library yet.',
     stream: 'Nothing on your list is streaming on your services right now.',
     rent: 'Nothing to rent or buy right now.',
     hunt: 'Nothing to track down. Everything is available somewhere.',
@@ -322,7 +342,7 @@ function render(){
           <span class="who" title="Added by ${esc(m.addedBy?.name)}">${esc((m.addedBy?.name || '?')[0].toUpperCase())}</span>
           <span class="logos">${cardLogos(m, S.tab)}</span>
           <div class="t">${esc(m.title)}</div>
-          <div class="s">${esc(m.year)}${m.runtime ? ' · ' + m.runtime + ' min' : ''}</div>
+          <div class="s">${esc(m.year)}${S.tab === 'home' ? ' · ' + esc(owned(m)) : (m.runtime ? ' · ' + m.runtime + ' min' : '')}</div>
         </button>`).join('')}</div>` : `<div class="empty">${emptyText}</div>`}
       <footer>Movie details from <a href="https://www.themoviedb.org" target="_blank" rel="noopener">TMDB</a>.
         Streaming availability from <a href="https://www.justwatch.com" target="_blank" rel="noopener">JustWatch</a>.<br>
@@ -342,9 +362,9 @@ function renderDetail(id){
   const m = S.movies.get(String(id));
   if (!m) { dlg.close(); return; }
   S.open = String(id);
-  const cat = classify(m), p = m.providers || {}, st = store(m);
+  const cat = classify(m), p = m.providers || {}, st = store(m), src = owned(m);
   const badge = {
-    home: 'At home in Jellyfin', stream: 'Streaming on your services',
+    home: OWNED_LABEL[src] || 'Owned', stream: 'Streaming on your services',
     rent: st ? `${[st.rent && 'Rent', st.buy && 'Buy'].filter(Boolean).join(' or ')} on ${st.name}` : 'Rent or buy',
     hunt: 'Track down a copy', watched: 'Watched'
   }[cat];
@@ -363,6 +383,7 @@ function renderDetail(id){
     </div>
     ${m.overview ? `<p class="overview">${esc(m.overview)}</p>` : ''}
     ${jfId && jfUrl ? `<a class="btn primary" target="_blank" rel="noopener" href="${esc(jfUrl)}/web/index.html#!/details?id=${esc(jfId)}">Play in Jellyfin (home wifi)</a>` : ''}
+    ${src === 'Apple' && !m.watched ? `<a class="btn primary" target="_blank" rel="noopener" href="https://tv.apple.com/">Open Apple TV</a>` : ''}
     <div class="block"><h3>Where to watch</h3>
       ${provRow('Stream', subs(m))}${provRow('Rent', p.rent || [])}${provRow('Buy', p.buy || [])}
       ${p.link ? `<a class="btn" target="_blank" rel="noopener" href="${esc(p.link)}">See all options</a>` : ''}
@@ -375,6 +396,11 @@ function renderDetail(id){
       </select>
       <textarea class="field" rows="2" data-change="notes" placeholder="Notes: where you've looked, fair price…">${esc(m.notes || '')}</textarea>
     </div>` : ''}
+    ${src === 'Jellyfin' || (src === 'Apple' && !m.owned) ? '' : `<div class="block"><h3>Do you own a copy?</h3>
+      <select class="field" data-change="owned" style="margin-top:0">
+        ${[['', 'Not marked as owned'], ['Apple', 'Yes, on Apple'], ['Disc', 'Yes, on disc'], ['Other', 'Yes, somewhere else']].map(([v, t]) => `<option value="${v}" ${(m.owned || '') === v ? 'selected' : ''}>${t}</option>`).join('')}
+      </select>
+      <p class="hint">Owned movies move to the At home tab.</p></div>`}
     ${m.watched ? `<div class="block"><h3>Ratings</h3>
       <div class="rate"><span>You</span><span class="stars">${[1,2,3,4,5].map(n => `<button class="${n <= mine ? 'on' : ''}" data-act="rate" data-n="${n}" aria-label="${n} stars">★</button>`).join('')}</span></div>
       ${others.map(([, r]) => `<div class="rate"><span>${esc(r.name)}</span><span style="color:var(--accent)">${'★'.repeat(r.stars)}</span></div>`).join('')}
@@ -431,7 +457,7 @@ function renderSettings(){
       <p class="hint">From themoviedb.org → Settings → API. Either value works.</p></div>
     <div class="block"><h3>Jellyfin address</h3>
       <input class="field" id="jfurl" placeholder="http://192.168.1.50:8096" value="${esc(S.config.jellyfinUrl || '')}" autocomplete="off" autocapitalize="off" spellcheck="false" inputmode="url">
-      <p class="hint">Used for the Play button on home wifi. ${S.jf.updatedAt ? 'Library last synced ' + new Date(S.jf.updatedAt).toLocaleString() + ' (' + Object.keys(S.jf.items || {}).length + ' movies).' : 'Library not synced yet.'}</p></div>
+      <p class="hint">Used for the Play button on home wifi. ${S.jf.updatedAt ? 'Library last synced ' + new Date(S.jf.updatedAt).toLocaleString() + ' (' + Object.keys(S.jf.items || {}).length + ' movies).' : 'Library not synced yet.'} ${S.jf.appleUpdatedAt ? 'Apple library: ' + (S.jf.apple || []).length + ' titles, read ' + new Date(S.jf.appleUpdatedAt).toLocaleDateString() + '.' : ''}</p></div>
     <button class="btn primary" data-act="savesettings">Save</button>
     <button class="btn" data-act="export">Export list</button>
     <button class="btn danger" data-act="signout">Sign out</button>

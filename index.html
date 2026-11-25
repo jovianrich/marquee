@@ -55,6 +55,15 @@ main{padding:14px 16px calc(env(safe-area-inset-bottom) + 96px)}
 .logos{position:absolute;right:5px;top:5px;display:flex;flex-direction:column;gap:3px}
 .logos img{width:22px;height:22px;border-radius:5px;display:block}
 .empty{text-align:center;color:var(--muted);padding:56px 20px}
+.tonight h2{font-size:23px;line-height:1.2;margin:4px 0 4px}
+.lab{font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin:16px 0 7px;font-weight:700}
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.chip{border:1px solid var(--line);background:transparent;border-radius:999px;padding:7px 13px;font-size:14px;font-weight:600;color:var(--muted)}
+.chip.on{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.row2{display:flex;gap:10px;margin-bottom:18px}
+.row2 .btn{margin-top:12px}
+.grid.one{grid-template-columns:minmax(0,210px);justify-content:center}
+.grid.three{grid-template-columns:repeat(3,minmax(0,1fr))}
 .fab{position:fixed;right:18px;bottom:calc(env(safe-area-inset-bottom) + 20px);z-index:6;border:0;
   background:var(--accent);color:var(--accent-ink);height:56px;padding:0 22px;border-radius:28px;
   font-weight:800;font-size:16px;box-shadow:0 6px 18px rgba(0,0,0,.28)}
@@ -147,18 +156,34 @@ const SERVICES = [
   { id:'criterion',   name:'Criterion Channel', match:/criterion/i }
 ];
 const TABS = [
+  { id:'tonight', label:'Tonight' },
+  { id:'all',     label:'All A–Z' },
   { id:'home',    label:'At home' },
   { id:'stream',  label:'Streaming now' },
   { id:'rent',    label:'Rent or buy' },
   { id:'hunt',    label:'Track down' },
   { id:'watched', label:'Watched' }
 ];
+const TIMES = [
+  { id:'any',  label:'Any length' },
+  { id:'90',   label:'Under 90 min', max:90 },
+  { id:'120',  label:'Under 2 hours', max:120 },
+  { id:'long', label:'2 hours or more', min:120 }
+];
+const MOODS = [
+  { id:'any',      label:'Anything' },
+  { id:'classics', label:'Classics', test: m => Number(m.year) >= 1920 && Number(m.year) <= 1969 },
+  { id:'light',    label:'Light', g:['Comedy','Family','Animation','Romance','Music'] },
+  { id:'tense',    label:'Tense', g:['Thriller','Horror','Crime','Mystery'] },
+  { id:'epic',     label:'Big adventure', g:['Adventure','Action','Science Fiction','Fantasy','War','Western'] },
+  { id:'serious',  label:'Serious', g:['Drama','History','Documentary'] }
+];
 const IMG = 'https://image.tmdb.org/t/p/';
 const DAY = 24 * 60 * 60 * 1000;
 
 const S = {
   user:null, movies:new Map(), config:{}, jf:{ items:{} },
-  tab:'stream', tabChosen:false, ready:false, denied:false, open:null, refreshed:false
+  tab:'tonight', tabChosen:false, tn:{ time:'any', mood:'any', rent:false, picks:[] }, ready:false, denied:false, open:null, refreshed:false
 };
 
 const $ = (sel, root=document) => root.querySelector(sel);
@@ -279,10 +304,10 @@ async function addMovie(id){
     const m = await fetchMovie(id);
     await setDoc(doc(db, 'movies', String(id)), {
       ...m, addedBy: { uid: S.user.uid, name: firstName(S.user) }, addedAt: Date.now(),
-      watched: false, ratings: {}, format: '', notes: ''
+      watched: false, ratings: {}, format: '', notes: '', why: '', owned: ''
     });
     const cat = classify({ ...m, watched: false });
-    S.tab = cat; S.tabChosen = true; render(); window.scrollTo(0, 0);
+    S.tab = cat; S.tabChosen = true; render(); window.scrollTo(0, 0); renderDetail(String(id));
     toast('Added ' + m.title + ' to ' + TABS.find(t => t.id === cat).label);
   } catch (e) { toast(e.message === 'nokey' ? 'Add your TMDB key in Settings first' : e.message); }
 }
@@ -302,6 +327,54 @@ function cardLogos(m, cat){
   return items.filter(x => x.l && !seen.has(x.l) && seen.add(x.l)).slice(0, 3)
     .map(x => `<img alt="${esc(x.n)}" src="${IMG}w92${esc(x.l)}">`).join('');
 }
+function whereLabel(m, cat){
+  if (cat === 'home') return OWNED_LABEL[owned(m)] || 'Owned';
+  if (cat === 'stream') { const hit = subs(m).find(x => isMine(x.n)); return hit ? 'On ' + hit.n : 'Streaming'; }
+  if (cat === 'rent') { const st = store(m); return st ? [st.rent && 'Rent', st.buy && 'Buy'].filter(Boolean).join('/') + ' on ' + st.name : 'Rent or buy'; }
+  return cat === 'hunt' ? 'Track down' : 'Watched';
+}
+function tonightPool(){
+  const t = TIMES.find(x => x.id === S.tn.time), mood = MOODS.find(x => x.id === S.tn.mood);
+  return [...S.movies.values()].filter(m => {
+    const c = classify(m);
+    if (!(c === 'home' || c === 'stream' || (S.tn.rent && c === 'rent'))) return false;
+    if (t.max && !(m.runtime > 0 && m.runtime <= t.max)) return false;
+    if (t.min && !(m.runtime >= t.min)) return false;
+    if (mood.test && !mood.test(m)) return false;
+    if (mood.g && !(m.genres || []).some(g => mood.g.includes(g))) return false;
+    return true;
+  });
+}
+function card(m){
+  const cat = classify(m);
+  const sub = (S.tab === 'all' || S.tab === 'tonight') ? whereLabel(m, cat)
+    : S.tab === 'home' ? m.year + ' · ' + owned(m)
+    : m.year + (m.runtime ? ' · ' + m.runtime + ' min' : '');
+  return `<button class="movie" data-act="open" data-id="${m.id}">
+    ${posterTag(m)}
+    <span class="who" title="Added by ${esc(m.addedBy?.name)}">${esc((m.addedBy?.name || '?')[0].toUpperCase())}</span>
+    <span class="logos">${cardLogos(m, cat)}</span>
+    <div class="t">${esc(m.title)}</div>
+    <div class="s">${esc(sub)}</div>
+  </button>`;
+}
+function tonightHTML(){
+  const pool = tonightPool();
+  const picks = S.tn.picks.map(id => S.movies.get(id)).filter(m => m && pool.includes(m));
+  const chips = (k, opts) => `<div class="chips">${opts.map(o => `<button class="chip ${S.tn[k] === o.id ? 'on' : ''}" data-act="tn" data-k="${k}" data-v="${o.id}">${o.label}</button>`).join('')}</div>`;
+  return `<section class="tonight">
+    <h2>What should we watch tonight?</h2>
+    <div class="lab">How much time?</div>${chips('time', TIMES)}
+    <div class="lab">In the mood for</div>${chips('mood', MOODS)}
+    <label class="check" style="margin-top:8px"><input type="checkbox" data-act="tnrent" ${S.tn.rent ? 'checked' : ''}>Include movies we'd need to rent or buy</label>
+    <div class="meta">${pool.length} ${pool.length === 1 ? 'movie fits' : 'movies fit'}</div>
+    ${pool.length ? `<div class="row2">
+      <button class="btn primary" data-act="roll" data-n="1">${picks.length === 1 ? 'Pick another' : 'Pick one for us'}</button>
+      <button class="btn" data-act="roll" data-n="3">${picks.length > 1 ? 'Three more' : 'Show three'}</button></div>`
+      : `<div class="empty">${S.movies.size ? 'Nothing fits. Try a different length or mood, or include rent or buy.' : 'Your list is empty. Tap + Add movie to start.'}</div>`}
+    ${picks.length ? `<div class="grid ${picks.length === 1 ? 'one' : 'three'}">${picks.map(card).join('')}</div>` : ''}
+  </section>`;
+}
 function render(){
   if (!S.user) {
     app.innerHTML = `<div class="center"><h1>Marquee</h1><div class="meta">Your shared movie list</div>
@@ -320,30 +393,24 @@ function render(){
   for (const m of S.movies.values()) groups[classify(m)].push(m);
   for (const g of Object.values(groups)) g.sort((a, b) => (b.addedAt || 0) - (a.addedAt || 0));
   groups.watched.sort((a, b) => (b.watchedAt || 0) - (a.watchedAt || 0));
-  if (!S.tabChosen) S.tab = (TABS.find(t => t.id !== 'watched' && groups[t.id].length) || TABS[1]).id;
+  groups.all = [...S.movies.values()].filter(m => !m.watched).sort((a, b) => norm(a.title).localeCompare(norm(b.title)));
   const list = groups[S.tab];
   const emptyText = {
     home: 'Nothing on your list is in Jellyfin or your Apple library yet.',
     stream: 'Nothing on your list is streaming on your services right now.',
     rent: 'Nothing to rent or buy right now.',
     hunt: 'Nothing to track down. Everything is available somewhere.',
-    watched: 'No movies marked as watched yet.'
+    watched: 'No movies marked as watched yet.',
+    all: 'Your list is empty. Tap + Add movie to start.'
   }[S.tab];
   app.innerHTML = `
     <header>
       <div class="top"><h1>Marquee</h1><button class="iconbtn" data-act="settings" aria-label="Settings">⚙︎</button></div>
-      <nav class="tabs">${TABS.map(t => `<button class="tab ${t.id === S.tab ? 'on' : ''}" data-act="tab" data-id="${t.id}">${t.label}<b>${groups[t.id].length}</b></button>`).join('')}</nav>
+      <nav class="tabs">${TABS.map(t => `<button class="tab ${t.id === S.tab ? 'on' : ''}" data-act="tab" data-id="${t.id}">${t.label}${t.id === 'tonight' ? '' : `<b>${groups[t.id].length}</b>`}</button>`).join('')}</nav>
     </header>
     <main>
       ${!S.config.tmdbKey ? `<div class="block" style="margin:0 0 14px"><h3>One-time setup</h3>Paste your TMDB key in Settings so Marquee can look up movies.<button class="btn primary" data-act="settings">Open Settings</button></div>` : ''}
-      ${list.length ? `<div class="grid">${list.map(m => `
-        <button class="movie" data-act="open" data-id="${m.id}">
-          ${posterTag(m)}
-          <span class="who" title="Added by ${esc(m.addedBy?.name)}">${esc((m.addedBy?.name || '?')[0].toUpperCase())}</span>
-          <span class="logos">${cardLogos(m, S.tab)}</span>
-          <div class="t">${esc(m.title)}</div>
-          <div class="s">${esc(m.year)}${S.tab === 'home' ? ' · ' + esc(owned(m)) : (m.runtime ? ' · ' + m.runtime + ' min' : '')}</div>
-        </button>`).join('')}</div>` : `<div class="empty">${emptyText}</div>`}
+      ${S.tab === 'tonight' ? tonightHTML() : list.length ? `<div class="grid">${list.map(card).join('')}</div>` : `<div class="empty">${emptyText}</div>`}
       <footer>Movie details from <a href="https://www.themoviedb.org" target="_blank" rel="noopener">TMDB</a>.
         Streaming availability from <a href="https://www.justwatch.com" target="_blank" rel="noopener">JustWatch</a>.<br>
         This product uses the TMDB API but is not endorsed or certified by TMDB.</footer>
@@ -384,6 +451,8 @@ function renderDetail(id){
     ${m.overview ? `<p class="overview">${esc(m.overview)}</p>` : ''}
     ${jfId && jfUrl ? `<a class="btn primary" target="_blank" rel="noopener" href="${esc(jfUrl)}/web/index.html#!/details?id=${esc(jfId)}">Play in Jellyfin (home wifi)</a>` : ''}
     ${src === 'Apple' && !m.watched ? `<a class="btn primary" target="_blank" rel="noopener" href="https://tv.apple.com/">Open Apple TV</a>` : ''}
+    <div class="block"><h3>Why it's on the list</h3>
+      <input class="field" data-change="why" placeholder="Who recommended it, or why you want to see it" value="${esc(m.why || '')}" autocomplete="off"></div>
     <div class="block"><h3>Where to watch</h3>
       ${provRow('Stream', subs(m))}${provRow('Rent', p.rent || [])}${provRow('Buy', p.buy || [])}
       ${p.link ? `<a class="btn" target="_blank" rel="noopener" href="${esc(p.link)}">See all options</a>` : ''}
@@ -479,6 +548,15 @@ document.addEventListener('click', async e => {
   }
   else if (act === 'signout') { if (dlg.open) dlg.close(); await signOut(auth); location.reload(); }
   else if (act === 'tab') { S.tab = id; S.tabChosen = true; render(); window.scrollTo(0, 0); }
+  else if (act === 'tn') { S.tn[el.dataset.k] = el.dataset.v; S.tn.picks = []; render(); }
+  else if (act === 'tnrent') { S.tn.rent = el.checked; S.tn.picks = []; render(); }
+  else if (act === 'roll') {
+    const n = Number(el.dataset.n), pool = tonightPool().map(m => String(m.id));
+    const fresh = pool.filter(x => !S.tn.picks.includes(x));
+    const from = fresh.length >= Math.min(n, pool.length) ? fresh : pool;
+    for (let i = from.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [from[i], from[j]] = [from[j], from[i]]; }
+    S.tn.picks = from.slice(0, n); render();
+  }
   else if (act === 'open') renderDetail(id);
   else if (act === 'add') renderAdd();
   else if (act === 'settings') renderSettings();

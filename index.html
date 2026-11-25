@@ -261,7 +261,9 @@ async function addMovie(id){
       ...m, addedBy: { uid: S.user.uid, name: firstName(S.user) }, addedAt: Date.now(),
       watched: false, ratings: {}, format: '', notes: ''
     });
-    toast('Added ' + m.title);
+    const cat = classify({ ...m, watched: false });
+    S.tab = cat; S.tabChosen = true; render(); window.scrollTo(0, 0);
+    toast('Added ' + m.title + ' to ' + TABS.find(t => t.id === cat).label);
   } catch (e) { toast(e.message === 'nokey' ? 'Add your TMDB key in Settings first' : e.message); }
 }
 const patch = (id, data) => updateDoc(doc(db, 'movies', String(id)), data).catch(e => toast(e.message));

@@ -1,0 +1,498 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Marquee</title>
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Marquee">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="theme-color" content="#faf6ef" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#14110f" media="(prefers-color-scheme: dark)">
+<link rel="apple-touch-icon" href="icon-180.png">
+<link rel="icon" href="icon-180.png">
+<link rel="manifest" href="manifest.webmanifest">
+<style>
+:root{
+  color-scheme: light dark;
+  --bg:#faf6ef; --card:#ffffff; --text:#221c16; --muted:#75695c; --line:#e6ddd0;
+  --accent:#b46a00; --accent-ink:#ffffff; --chip:#f1e9dc; --danger:#b3261e;
+}
+@media (prefers-color-scheme: dark){
+  :root{
+    --bg:#14110f; --card:#1f1b18; --text:#f4ece1; --muted:#a89b8b; --line:#332c26;
+    --accent:#f2b04a; --accent-ink:#1b1408; --chip:#2a241f; --danger:#ff8a80;
+  }
+}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--text);
+  font:16px/1.4 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;-webkit-text-size-adjust:100%}
+button,input,select,textarea{font:inherit;color:inherit}
+button{cursor:pointer;-webkit-tap-highlight-color:transparent}
+header{position:sticky;top:0;z-index:5;background:var(--bg);
+  padding:calc(env(safe-area-inset-top) + 10px) 16px 0;border-bottom:1px solid var(--line)}
+.top{display:flex;align-items:center;justify-content:space-between;gap:12px}
+h1{margin:0;font-size:26px;letter-spacing:.14em;text-transform:uppercase;font-weight:800;color:var(--accent)}
+.iconbtn{border:0;background:var(--chip);width:40px;height:40px;border-radius:20px;font-size:18px}
+.tabs{display:flex;gap:6px;overflow-x:auto;padding:12px 0 10px;scrollbar-width:none}
+.tabs::-webkit-scrollbar{display:none}
+.tab{flex:0 0 auto;border:1px solid var(--line);background:transparent;border-radius:999px;
+  padding:7px 13px;font-size:14px;font-weight:600;color:var(--muted);white-space:nowrap}
+.tab.on{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.tab b{font-weight:700;opacity:.8;margin-left:5px}
+main{padding:14px 16px calc(env(safe-area-inset-bottom) + 96px)}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(104px,1fr));gap:12px}
+.movie{border:0;padding:0;background:none;text-align:left;position:relative}
+.poster{width:100%;aspect-ratio:2/3;border-radius:10px;background:var(--chip);object-fit:cover;display:block}
+.noposter{display:flex;align-items:center;justify-content:center;padding:8px;text-align:center;
+  font-size:13px;font-weight:600;color:var(--muted)}
+.movie .t{font-size:13px;font-weight:600;margin-top:6px;display:-webkit-box;-webkit-line-clamp:2;
+  -webkit-box-orient:vertical;overflow:hidden}
+.movie .s{font-size:12px;color:var(--muted)}
+.who{position:absolute;top:6px;left:6px;background:var(--accent);color:var(--accent-ink);
+  width:22px;height:22px;border-radius:11px;font-size:12px;font-weight:800;
+  display:flex;align-items:center;justify-content:center}
+.logos{position:absolute;right:5px;top:5px;display:flex;flex-direction:column;gap:3px}
+.logos img{width:22px;height:22px;border-radius:5px;display:block}
+.empty{text-align:center;color:var(--muted);padding:56px 20px}
+.fab{position:fixed;right:18px;bottom:calc(env(safe-area-inset-bottom) + 20px);z-index:6;border:0;
+  background:var(--accent);color:var(--accent-ink);height:56px;padding:0 22px;border-radius:28px;
+  font-weight:800;font-size:16px;box-shadow:0 6px 18px rgba(0,0,0,.28)}
+footer{text-align:center;font-size:12px;color:var(--muted);padding:26px 0 0}
+footer a{color:inherit}
+dialog{border:0;padding:0;background:var(--bg);color:var(--text);width:100%;max-width:560px;
+  max-height:92dvh;border-radius:18px 18px 0 0;margin:auto auto 0;overflow:auto}
+dialog::backdrop{background:rgba(0,0,0,.55)}
+@media (min-width:600px){dialog{border-radius:18px;margin:auto}}
+.sheet{padding:16px 16px calc(env(safe-area-inset-bottom) + 22px)}
+.sheethead{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;gap:10px}
+.sheethead h2{margin:0;font-size:19px}
+.field{width:100%;padding:12px 14px;border-radius:12px;border:1px solid var(--line);background:var(--card)}
+.result{display:flex;gap:12px;align-items:center;width:100%;border:0;background:none;
+  padding:8px 0;text-align:left;border-bottom:1px solid var(--line)}
+.result img,.result .ph{width:46px;height:69px;border-radius:6px;background:var(--chip);object-fit:cover;flex:0 0 auto}
+.result .on{color:var(--accent);font-size:12px;font-weight:700}
+.hero{display:flex;gap:14px}
+.hero img,.hero .ph{width:112px;height:168px;border-radius:10px;background:var(--chip);object-fit:cover;flex:0 0 auto}
+.hero h2{margin:0 0 4px;font-size:21px;line-height:1.2}
+.meta{color:var(--muted);font-size:14px}
+.badge{display:inline-block;margin-top:10px;padding:5px 10px;border-radius:999px;background:var(--accent);
+  color:var(--accent-ink);font-size:13px;font-weight:700}
+.overview{font-size:14px;margin:14px 0;color:var(--text)}
+.block{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:12px 14px;margin-top:12px}
+.block h3{margin:0 0 8px;font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.prow{display:flex;gap:10px;align-items:flex-start;padding:7px 0;border-top:1px solid var(--line)}
+.prow:first-of-type{border-top:0}
+.prow .k{width:58px;flex:0 0 auto;font-size:13px;font-weight:700;padding-top:6px}
+.plist{display:flex;flex-wrap:wrap;gap:6px}
+.prov{display:flex;align-items:center;gap:6px;background:var(--chip);border-radius:8px;padding:3px 8px 3px 3px;font-size:12px}
+.prov img{width:26px;height:26px;border-radius:6px}
+.prov.mine{outline:2px solid var(--accent)}
+.none{color:var(--muted);font-size:13px;padding-top:6px}
+.btn{display:block;width:100%;border:0;border-radius:12px;padding:13px;font-weight:700;margin-top:10px;
+  background:var(--chip);text-align:center;text-decoration:none;color:var(--text)}
+.btn.primary{background:var(--accent);color:var(--accent-ink)}
+.btn.danger{background:none;color:var(--danger)}
+.stars{display:flex;gap:4px}
+.stars button{border:0;background:none;font-size:28px;padding:0 2px;color:var(--line)}
+.stars button.on{color:var(--accent)}
+.rate{display:flex;justify-content:space-between;align-items:center;font-size:14px;padding:3px 0}
+label.check{display:flex;align-items:center;gap:10px;padding:8px 0;font-size:15px}
+label.check input{width:20px;height:20px;accent-color:var(--accent)}
+.hint{font-size:13px;color:var(--muted);margin:6px 0 0}
+.center{min-height:100dvh;display:flex;flex-direction:column;align-items:center;justify-content:center;
+  padding:30px;text-align:center;gap:14px}
+.center .btn{max-width:300px}
+.toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(env(safe-area-inset-bottom) + 90px);
+  background:var(--text);color:var(--bg);padding:10px 16px;border-radius:999px;font-size:14px;z-index:20;max-width:88vw}
+select.field,textarea.field{margin-top:8px}
+</style>
+</head>
+<body>
+<div id="app"><div class="center"><h1>Marquee</h1><div class="meta">Loading…</div></div></div>
+<dialog id="dlg"></dialog>
+
+<script type="module">
+import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
+import { getAuth, GoogleAuthProvider, signInWithPopup, signInWithRedirect, onAuthStateChanged, signOut }
+  from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
+import { getFirestore, collection, doc, onSnapshot, setDoc, updateDoc, deleteDoc, deleteField }
+  from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
+
+const firebaseConfig = {
+  apiKey: "AIzaSyDMmNIoSvBso_fBHl25tBbHCRePZFiwJUo",
+  authDomain: "marquee-63897.firebaseapp.com",
+  projectId: "marquee-63897",
+  storageBucket: "marquee-63897.firebasestorage.app",
+  messagingSenderId: "847318923234",
+  appId: "1:847318923234:web:76cd90621f518ae8af2bbb"
+};
+
+const fb = initializeApp(firebaseConfig);
+const auth = getAuth(fb);
+const db = getFirestore(fb);
+
+/* Subscriptions. "match" is tested against the provider name TMDB/JustWatch returns. */
+const SERVICES = [
+  { id:'appletv',     name:'Apple TV',          match:/apple tv/i },
+  { id:'netflix',     name:'Netflix',           match:/netflix/i },
+  { id:'disney',      name:'Disney+',           match:/disney/i },
+  { id:'hulu',        name:'Hulu',              match:/hulu/i },
+  { id:'paramount',   name:'Paramount+',        match:/paramount/i },
+  { id:'prime',       name:'Prime Video',       match:/prime video/i },
+  { id:'hbomax',      name:'HBO Max',           match:/\bhbo\b|\bmax\b/i },
+  { id:'mubi',        name:'Mubi',              match:/mubi/i },
+  { id:'peacock',     name:'Peacock',           match:/peacock/i },
+  { id:'crunchyroll', name:'Crunchyroll',       match:/crunchyroll/i },
+  { id:'criterion',   name:'Criterion Channel', match:/criterion/i }
+];
+const TABS = [
+  { id:'home',    label:'At home' },
+  { id:'stream',  label:'Streaming now' },
+  { id:'rent',    label:'Rent or buy' },
+  { id:'hunt',    label:'Track down' },
+  { id:'watched', label:'Watched' }
+];
+const IMG = 'https://image.tmdb.org/t/p/';
+const DAY = 24 * 60 * 60 * 1000;
+
+const S = {
+  user:null, movies:new Map(), config:{}, jf:{ items:{} },
+  tab:'stream', tabChosen:false, ready:false, denied:false, open:null, refreshed:false
+};
+
+const $ = (sel, root=document) => root.querySelector(sel);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const app = $('#app'), dlg = $('#dlg');
+const firstName = u => (u?.displayName || u?.email || 'Someone').split(/[ @]/)[0];
+
+function toast(msg){
+  document.querySelectorAll('.toast').forEach(t => t.remove());
+  const t = document.createElement('div'); t.className = 'toast'; t.textContent = msg;
+  document.body.appendChild(t); setTimeout(() => t.remove(), 3200);
+}
+
+/* ---------- availability logic ---------- */
+function enabledServices(){
+  const on = S.config.services;
+  return SERVICES.filter(s => !Array.isArray(on) || on.includes(s.id));
+}
+const isMine = name => enabledServices().some(s => s.match.test(name));
+function subs(m){
+  const p = m.providers || {};
+  return [...(p.flatrate||[]), ...(p.free||[]), ...(p.ads||[])];
+}
+function store(m){
+  const p = m.providers || {};
+  const all = [...(p.rent||[]).map(x => ({...x, how:'rent'})), ...(p.buy||[]).map(x => ({...x, how:'buy'}))];
+  for (const re of [/apple/i, /amazon/i]) {
+    const hits = all.filter(x => re.test(x.n));
+    if (hits.length) return { name: re.source === 'apple' ? 'Apple' : 'Amazon', logo: hits[0].l,
+      rent: hits.some(h => h.how === 'rent'), buy: hits.some(h => h.how === 'buy') };
+  }
+  return null;
+}
+function classify(m){
+  if (m.watched) return 'watched';
+  if (S.jf.items && S.jf.items[String(m.id)]) return 'home';
+  if (subs(m).some(x => isMine(x.n))) return 'stream';
+  if (store(m)) return 'rent';
+  return 'hunt';
+}
+
+/* ---------- TMDB ---------- */
+async function tmdb(path, params = {}){
+  const key = (S.config.tmdbKey || '').trim();
+  if (!key) throw new Error('nokey');
+  const u = new URL('https://api.themoviedb.org/3' + path);
+  for (const [k, v] of Object.entries(params)) u.searchParams.set(k, v);
+  const opt = {};
+  if (key.startsWith('eyJ')) opt.headers = { Authorization: 'Bearer ' + key };
+  else u.searchParams.set('api_key', key);
+  const r = await fetch(u, opt);
+  if (!r.ok) throw new Error('TMDB error ' + r.status);
+  return r.json();
+}
+const slim = list => (list || []).map(x => ({ n: x.provider_name, l: x.logo_path || '' }));
+function pickProviders(d){
+  const us = d?.['watch/providers']?.results?.US || {};
+  return { link: us.link || '', flatrate: slim(us.flatrate), free: slim(us.free), ads: slim(us.ads),
+           rent: slim(us.rent), buy: slim(us.buy), at: Date.now() };
+}
+async function fetchMovie(id){
+  const d = await tmdb('/movie/' + id, { append_to_response: 'watch/providers' });
+  return {
+    id: d.id, title: d.title || '', year: (d.release_date || '').slice(0, 4), poster: d.poster_path || '',
+    runtime: d.runtime || 0, genres: (d.genres || []).map(g => g.name), overview: d.overview || '',
+    providers: pickProviders(d)
+  };
+}
+async function refreshProviders(id){
+  const d = await tmdb('/movie/' + id + '/watch/providers');
+  const providers = pickProviders({ 'watch/providers': d });
+  await updateDoc(doc(db, 'movies', String(id)), { providers });
+}
+async function refreshStale(){
+  if (S.refreshed || !S.config.tmdbKey || !S.movies.size) return;
+  S.refreshed = true;
+  for (const m of [...S.movies.values()]) {
+    if (m.watched || (m.providers?.at || 0) > Date.now() - DAY) continue;
+    try { await refreshProviders(m.id); } catch (e) { break; }
+    await new Promise(r => setTimeout(r, 300));
+  }
+}
+
+/* ---------- data ---------- */
+function listen(){
+  const fail = e => { if (e.code === 'permission-denied') { S.denied = true; render(); } else toast(e.message); };
+  onSnapshot(collection(db, 'movies'), snap => {
+    S.movies = new Map(snap.docs.map(d => [d.id, d.data()]));
+    S.ready = true; render(); refreshStale();
+  }, fail);
+  onSnapshot(doc(db, 'config', 'app'), d => { S.config = d.data() || {}; render(); refreshStale(); }, fail);
+  onSnapshot(doc(db, 'jellyfin', 'library'), d => { S.jf = d.data() || { items:{} }; render(); }, () => {});
+}
+async function addMovie(id){
+  if (S.movies.has(String(id))) { toast('Already on the list'); return; }
+  try {
+    const m = await fetchMovie(id);
+    await setDoc(doc(db, 'movies', String(id)), {
+      ...m, addedBy: { uid: S.user.uid, name: firstName(S.user) }, addedAt: Date.now(),
+      watched: false, ratings: {}, format: '', notes: ''
+    });
+    toast('Added ' + m.title);
+  } catch (e) { toast(e.message === 'nokey' ? 'Add your TMDB key in Settings first' : e.message); }
+}
+const patch = (id, data) => updateDoc(doc(db, 'movies', String(id)), data).catch(e => toast(e.message));
+const saveConfig = data => setDoc(doc(db, 'config', 'app'), data, { merge: true }).catch(e => toast(e.message));
+
+/* ---------- rendering ---------- */
+function posterTag(m, size = 'w342'){
+  return m.poster ? `<img class="poster" loading="lazy" alt="" src="${IMG}${size}${esc(m.poster)}">`
+                  : `<div class="poster noposter">${esc(m.title)}</div>`;
+}
+function cardLogos(m, cat){
+  let items = [];
+  if (cat === 'stream') items = subs(m).filter(x => isMine(x.n));
+  if (cat === 'rent') { const s = store(m); if (s) items = [{ n: s.name, l: s.logo }]; }
+  const seen = new Set();
+  return items.filter(x => x.l && !seen.has(x.l) && seen.add(x.l)).slice(0, 3)
+    .map(x => `<img alt="${esc(x.n)}" src="${IMG}w92${esc(x.l)}">`).join('');
+}
+function render(){
+  if (!S.user) {
+    app.innerHTML = `<div class="center"><h1>Marquee</h1><div class="meta">Your shared movie list</div>
+      <button class="btn primary" data-act="signin">Sign in with Google</button></div>`;
+    return;
+  }
+  if (S.denied) {
+    app.innerHTML = `<div class="center"><h1>Marquee</h1>
+      <div>${esc(S.user.email)} isn't on this list's guest list.</div>
+      <div class="meta">If that's unexpected, check the database rules include this exact address.</div>
+      <button class="btn" data-act="signout">Sign out</button></div>`;
+    return;
+  }
+  if (!S.ready) return;
+  const groups = Object.fromEntries(TABS.map(t => [t.id, []]));
+  for (const m of S.movies.values()) groups[classify(m)].push(m);
+  for (const g of Object.values(groups)) g.sort((a, b) => (b.addedAt || 0) - (a.addedAt || 0));
+  groups.watched.sort((a, b) => (b.watchedAt || 0) - (a.watchedAt || 0));
+  if (!S.tabChosen) S.tab = (TABS.find(t => t.id !== 'watched' && groups[t.id].length) || TABS[1]).id;
+  const list = groups[S.tab];
+  const emptyText = {
+    home: 'Nothing from your list is in Jellyfin yet.',
+    stream: 'Nothing on your list is streaming on your services right now.',
+    rent: 'Nothing to rent or buy right now.',
+    hunt: 'Nothing to track down. Everything is available somewhere.',
+    watched: 'No movies marked as watched yet.'
+  }[S.tab];
+  app.innerHTML = `
+    <header>
+      <div class="top"><h1>Marquee</h1><button class="iconbtn" data-act="settings" aria-label="Settings">⚙︎</button></div>
+      <nav class="tabs">${TABS.map(t => `<button class="tab ${t.id === S.tab ? 'on' : ''}" data-act="tab" data-id="${t.id}">${t.label}<b>${groups[t.id].length}</b></button>`).join('')}</nav>
+    </header>
+    <main>
+      ${!S.config.tmdbKey ? `<div class="block" style="margin:0 0 14px"><h3>One-time setup</h3>Paste your TMDB key in Settings so Marquee can look up movies.<button class="btn primary" data-act="settings">Open Settings</button></div>` : ''}
+      ${list.length ? `<div class="grid">${list.map(m => `
+        <button class="movie" data-act="open" data-id="${m.id}">
+          ${posterTag(m)}
+          <span class="who" title="Added by ${esc(m.addedBy?.name)}">${esc((m.addedBy?.name || '?')[0].toUpperCase())}</span>
+          <span class="logos">${cardLogos(m, S.tab)}</span>
+          <div class="t">${esc(m.title)}</div>
+          <div class="s">${esc(m.year)}${m.runtime ? ' · ' + m.runtime + ' min' : ''}</div>
+        </button>`).join('')}</div>` : `<div class="empty">${emptyText}</div>`}
+      <footer>Movie details from <a href="https://www.themoviedb.org" target="_blank" rel="noopener">TMDB</a>.
+        Streaming availability from <a href="https://www.justwatch.com" target="_blank" rel="noopener">JustWatch</a>.<br>
+        This product uses the TMDB API but is not endorsed or certified by TMDB.</footer>
+    </main>
+    <button class="fab" data-act="add">+ Add movie</button>`;
+  if (S.open && dlg.open) renderDetail(S.open);
+}
+
+function provRow(label, items){
+  const body = items.length
+    ? `<div class="plist">${items.map(x => `<span class="prov ${isMine(x.n) && label === 'Stream' ? 'mine' : ''}">${x.l ? `<img alt="" src="${IMG}w92${esc(x.l)}">` : ''}${esc(x.n)}</span>`).join('')}</div>`
+    : `<div class="none">Not available</div>`;
+  return `<div class="prow"><div class="k">${label}</div>${body}</div>`;
+}
+function renderDetail(id){
+  const m = S.movies.get(String(id));
+  if (!m) { dlg.close(); return; }
+  S.open = String(id);
+  const cat = classify(m), p = m.providers || {}, st = store(m);
+  const badge = {
+    home: 'At home in Jellyfin', stream: 'Streaming on your services',
+    rent: st ? `${[st.rent && 'Rent', st.buy && 'Buy'].filter(Boolean).join(' or ')} on ${st.name}` : 'Rent or buy',
+    hunt: 'Track down a copy', watched: 'Watched'
+  }[cat];
+  const jfId = S.jf.items?.[String(m.id)], jfUrl = (S.config.jellyfinUrl || '').replace(/\/+$/, '');
+  const mine = m.ratings?.[S.user.uid]?.stars || 0;
+  const others = Object.entries(m.ratings || {}).filter(([uid]) => uid !== S.user.uid);
+  const elsewhere = subs(m).filter(x => !isMine(x.n)).map(x => x.n);
+  dlg.innerHTML = `<div class="sheet">
+    <div class="sheethead"><span class="meta">Added by ${esc(m.addedBy?.name || 'someone')}</span>
+      <button class="iconbtn" data-act="close" aria-label="Close">✕</button></div>
+    <div class="hero">
+      ${m.poster ? `<img alt="" src="${IMG}w342${esc(m.poster)}">` : `<div class="ph"></div>`}
+      <div><h2>${esc(m.title)}</h2>
+        <div class="meta">${esc([m.year, m.runtime ? m.runtime + ' min' : '', (m.genres || []).slice(0, 3).join(', ')].filter(Boolean).join(' · '))}</div>
+        <span class="badge">${esc(badge)}</span></div>
+    </div>
+    ${m.overview ? `<p class="overview">${esc(m.overview)}</p>` : ''}
+    ${jfId && jfUrl ? `<a class="btn primary" target="_blank" rel="noopener" href="${esc(jfUrl)}/web/index.html#!/details?id=${esc(jfId)}">Play in Jellyfin (home wifi)</a>` : ''}
+    <div class="block"><h3>Where to watch</h3>
+      ${provRow('Stream', subs(m))}${provRow('Rent', p.rent || [])}${provRow('Buy', p.buy || [])}
+      ${p.link ? `<a class="btn" target="_blank" rel="noopener" href="${esc(p.link)}">See all options</a>` : ''}
+      <p class="hint">Availability from JustWatch, US. ${p.at ? 'Checked ' + new Date(p.at).toLocaleDateString() + '.' : ''}</p>
+    </div>
+    ${cat === 'hunt' ? `<div class="block"><h3>Physical media hunt</h3>
+      ${elsewhere.length ? `<p class="hint" style="margin:0 0 8px">Streaming only on: ${esc(elsewhere.join(', '))}</p>` : ''}
+      <select class="field" data-change="format" style="margin-top:0">
+        ${['', '4K UHD', 'Blu-ray', 'DVD'].map(f => `<option value="${f}" ${m.format === f ? 'selected' : ''}>${f || 'Any format'}</option>`).join('')}
+      </select>
+      <textarea class="field" rows="2" data-change="notes" placeholder="Notes: where you've looked, fair price…">${esc(m.notes || '')}</textarea>
+    </div>` : ''}
+    ${m.watched ? `<div class="block"><h3>Ratings</h3>
+      <div class="rate"><span>You</span><span class="stars">${[1,2,3,4,5].map(n => `<button class="${n <= mine ? 'on' : ''}" data-act="rate" data-n="${n}" aria-label="${n} stars">★</button>`).join('')}</span></div>
+      ${others.map(([, r]) => `<div class="rate"><span>${esc(r.name)}</span><span style="color:var(--accent)">${'★'.repeat(r.stars)}</span></div>`).join('')}
+    </div>` : ''}
+    <button class="btn ${m.watched ? '' : 'primary'}" data-act="watched">${m.watched ? 'Move back to the list' : 'Mark as watched'}</button>
+    <button class="btn" data-act="refresh">Refresh availability</button>
+    <button class="btn danger" data-act="remove">Remove from list</button>
+  </div>`;
+  if (!dlg.open) dlg.showModal();
+}
+
+function renderAdd(){
+  S.open = null;
+  dlg.innerHTML = `<div class="sheet">
+    <div class="sheethead"><h2>Add a movie</h2><button class="iconbtn" data-act="close" aria-label="Close">✕</button></div>
+    <input class="field" id="q" type="search" placeholder="Search by title" autocomplete="off" enterkeyhint="search">
+    <div id="results" style="margin-top:8px"></div></div>`;
+  dlg.showModal();
+  const q = $('#q', dlg); q.focus();
+  let timer, seq = 0;
+  q.addEventListener('input', () => {
+    clearTimeout(timer);
+    timer = setTimeout(async () => {
+      const term = q.value.trim(), box = $('#results', dlg), mySeq = ++seq;
+      if (term.length < 2) { box.innerHTML = ''; return; }
+      try {
+        const r = await tmdb('/search/movie', { query: term, include_adult: 'false' });
+        if (mySeq !== seq) return;
+        box.innerHTML = r.results.slice(0, 12).map(x => `
+          <button class="result" data-act="pick" data-id="${x.id}">
+            ${x.poster_path ? `<img alt="" src="${IMG}w92${esc(x.poster_path)}">` : `<div class="ph"></div>`}
+            <div><div style="font-weight:600">${esc(x.title)}</div>
+              <div class="meta">${esc((x.release_date || '').slice(0, 4))}</div>
+              ${S.movies.has(String(x.id)) ? `<div class="on">On your list</div>` : ''}</div>
+          </button>`).join('') || `<div class="empty">No matches</div>`;
+      } catch (e) {
+        box.innerHTML = `<div class="empty">${e.message === 'nokey' ? 'Add your TMDB key in Settings first.' : esc(e.message)}</div>`;
+      }
+    }, 300);
+  });
+}
+
+function renderSettings(){
+  S.open = null;
+  const on = S.config.services;
+  dlg.innerHTML = `<div class="sheet">
+    <div class="sheethead"><h2>Settings</h2><button class="iconbtn" data-act="close" aria-label="Close">✕</button></div>
+    <div class="meta">Signed in as ${esc(S.user.email)}. Settings are shared by everyone on the list.</div>
+    <div class="block"><h3>My services</h3>
+      ${SERVICES.map(s => `<label class="check"><input type="checkbox" data-svc="${s.id}" ${!Array.isArray(on) || on.includes(s.id) ? 'checked' : ''}>${s.name}</label>`).join('')}
+    </div>
+    <div class="block"><h3>TMDB key</h3>
+      <input class="field" id="tmdbkey" placeholder="API Key or API Read Access Token" value="${esc(S.config.tmdbKey || '')}" autocomplete="off" autocapitalize="off" spellcheck="false">
+      <p class="hint">From themoviedb.org → Settings → API. Either value works.</p></div>
+    <div class="block"><h3>Jellyfin address</h3>
+      <input class="field" id="jfurl" placeholder="http://192.168.1.50:8096" value="${esc(S.config.jellyfinUrl || '')}" autocomplete="off" autocapitalize="off" spellcheck="false" inputmode="url">
+      <p class="hint">Used for the Play button on home wifi. ${S.jf.updatedAt ? 'Library last synced ' + new Date(S.jf.updatedAt).toLocaleString() + ' (' + Object.keys(S.jf.items || {}).length + ' movies).' : 'Library not synced yet.'}</p></div>
+    <button class="btn primary" data-act="savesettings">Save</button>
+    <button class="btn" data-act="export">Export list</button>
+    <button class="btn danger" data-act="signout">Sign out</button>
+  </div>`;
+  dlg.showModal();
+}
+
+/* ---------- events ---------- */
+document.addEventListener('click', async e => {
+  const el = e.target.closest('[data-act]'); if (!el) return;
+  const act = el.dataset.act, id = el.dataset.id;
+  if (act === 'signin') {
+    const provider = new GoogleAuthProvider();
+    try { await signInWithPopup(auth, provider); }
+    catch (err) {
+      if (/popup|operation-not-supported|web-storage/.test(err.code || '')) signInWithRedirect(auth, provider);
+      else if (err.code !== 'auth/cancelled-popup-request') toast(err.message);
+    }
+  }
+  else if (act === 'signout') { if (dlg.open) dlg.close(); await signOut(auth); location.reload(); }
+  else if (act === 'tab') { S.tab = id; S.tabChosen = true; render(); window.scrollTo(0, 0); }
+  else if (act === 'open') renderDetail(id);
+  else if (act === 'add') renderAdd();
+  else if (act === 'settings') renderSettings();
+  else if (act === 'close') { S.open = null; dlg.close(); }
+  else if (act === 'pick') { dlg.close(); await addMovie(id); }
+  else if (act === 'watched') {
+    const m = S.movies.get(S.open);
+    patch(S.open, m.watched ? { watched: false, watchedAt: deleteField() } : { watched: true, watchedAt: Date.now() });
+  }
+  else if (act === 'rate') patch(S.open, { ['ratings.' + S.user.uid]: { name: firstName(S.user), stars: Number(el.dataset.n) } });
+  else if (act === 'refresh') {
+    try { await refreshProviders(S.open); toast('Availability updated'); }
+    catch (err) { toast(err.message === 'nokey' ? 'Add your TMDB key in Settings first' : err.message); }
+  }
+  else if (act === 'remove') {
+    const m = S.movies.get(S.open);
+    if (el.dataset.sure) { const gone = S.open; S.open = null; dlg.close(); await deleteDoc(doc(db, 'movies', gone)); toast('Removed ' + m.title); }
+    else { el.dataset.sure = '1'; el.textContent = 'Tap again to remove'; }
+  }
+  else if (act === 'savesettings') {
+    const services = [...dlg.querySelectorAll('[data-svc]')].filter(c => c.checked).map(c => c.dataset.svc);
+    await saveConfig({ services, tmdbKey: $('#tmdbkey', dlg).value.trim(), jellyfinUrl: $('#jfurl', dlg).value.trim() });
+    S.refreshed = false; dlg.close(); toast('Saved');
+  }
+  else if (act === 'export') {
+    const blob = new Blob([JSON.stringify([...S.movies.values()], null, 2)], { type: 'application/json' });
+    const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
+    a.download = 'marquee-' + new Date().toISOString().slice(0, 10) + '.json'; a.click();
+  }
+});
+dlg.addEventListener('change', e => {
+  const key = e.target.dataset.change;
+  if (key && S.open) patch(S.open, { [key]: e.target.value });
+});
+dlg.addEventListener('click', e => { if (e.target === dlg) { S.open = null; dlg.close(); } });
+dlg.addEventListener('close', () => { S.open = null; });
+
+let listening = false;
+onAuthStateChanged(auth, user => {
+  S.user = user; render();
+  if (user && !listening) { listening = true; listen(); }
+});
+</script>
+</body>
+</html>

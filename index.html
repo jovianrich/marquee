@@ -629,7 +629,27 @@ function renderDetail(id){
   if (!dlg.open) dlg.showModal();
 }
 
-const VERSION = 'Nov 25, 5:50 PM';
+const VERSION = 'Nov 25, 6:00 PM';
+/* GitHub lets browsers keep a copy of this page for about ten minutes, and home screen apps hold on
+   even longer. On opening, and whenever the app comes back to the front, ask the server for a fresh
+   copy; if it is a newer version, reload once to pick it up. */
+let lastUpdateCheck = 0;
+async function checkForUpdate(){
+  if (Date.now() - lastUpdateCheck < 60000) return;
+  lastUpdateCheck = Date.now();
+  try {
+    const text = await (await fetch(location.href.split('#')[0], { cache: 'reload' })).text();
+    const found = (text.match(/const VERSION = '([^']+)'/) || [])[1];
+    if (!found || found === VERSION) return;
+    let tried = '';
+    try { tried = sessionStorage.getItem('marquee-update') || ''; } catch (e) { /* storage unavailable */ }
+    if (tried === found) return;
+    try { sessionStorage.setItem('marquee-update', found); } catch (e) { /* storage unavailable */ }
+    if (!dlg.open) location.reload();
+  } catch (e) { /* offline: try again next time */ }
+}
+checkForUpdate();
+document.addEventListener('visibilitychange', () => { if (!document.hidden) checkForUpdate(); });
 function fitViewport(){
   const v = window.visualViewport; if (!v) return;
   document.documentElement.style.setProperty('--vvh', v.height + 'px');

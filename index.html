@@ -223,10 +223,12 @@ const SRC_LETTER = { Jellyfin:'J', Apple:'A', Disc:'D', Other:'O' };
 const MOODS = [
   { id:'any',      label:'Anything' },
   { id:'classics', label:'Classics', test: m => Number(m.year) >= 1920 && Number(m.year) <= 1969 },
-  { id:'light',    label:'Light', g:['Comedy','Family','Animation','Romance','Music'] },
+  /* Light needs a comedy, family or animated film, and nothing dark alongside it.
+     Romance and Music alone do not count: plenty of heavy dramas carry those tags. */
+  { id:'light',    label:'Light', test: m => { const g = m.genres || []; return g.some(x => ['Comedy','Family','Animation'].includes(x)) && !g.some(x => ['Horror','Thriller','War','Crime','Mystery'].includes(x)); } },
   { id:'tense',    label:'Tense', g:['Thriller','Horror','Crime','Mystery'] },
   { id:'epic',     label:'Big adventure', g:['Adventure','Action','Science Fiction','Fantasy','War','Western'] },
-  { id:'serious',  label:'Serious', g:['Drama','History','Documentary'] }
+  { id:'serious',  label:'Serious', test: m => { const g = m.genres || []; return g.some(x => ['Drama','History','Documentary','War'].includes(x)) && !g.some(x => ['Comedy','Family','Animation'].includes(x)); } }
 ];
 const IMG = 'https://image.tmdb.org/t/p/';
 const DAY = 24 * 60 * 60 * 1000;

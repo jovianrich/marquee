@@ -344,9 +344,18 @@ async function tmdb(path, params = {}){
   const opt = {};
   if (key.startsWith('eyJ')) opt.headers = { Authorization: 'Bearer ' + key };
   else u.searchParams.set('api_key', key);
-  const r = await fetch(u, opt);
-  if (!r.ok) throw new Error('TMDB error ' + r.status);
-  return r.json();
+  /* A stalled or refused request is given up on after six seconds and tried once more. */
+  for (let attempt = 0; ; attempt++) {
+    const ctl = new AbortController(), timer = setTimeout(() => ctl.abort(), 6000);
+    try {
+      const r = await fetch(u, { ...opt, signal: ctl.signal });
+      if (r.ok) return await r.json();
+      if (attempt || (r.status !== 429 && r.status < 500)) throw new Error('TMDB error ' + r.status);
+    } catch (e) {
+      if (attempt || /^TMDB error/.test(e.message)) throw (e.name === 'AbortError' ? new Error('The movie database took too long to answer.') : e);
+    } finally { clearTimeout(timer); }
+    await new Promise(res => setTimeout(res, 700));
+  }
 }
 const slim = list => (list || []).map(x => ({ n: x.provider_name, l: x.logo_path || '' }));
 function pickRelease(d){
@@ -382,6 +391,7 @@ async function refreshStale(){
   S.refreshed = true;
   for (const m of [...S.movies.values()]) {
     if ((m.watched && m.castIds) || (m.rel && m.castIds && (m.providers?.at || 0) > Date.now() - DAY)) continue;
+    while (dlg.open && dlg.classList.contains('top')) await new Promise(r => setTimeout(r, 1000));
     try { await refreshProviders(m.id); } catch (e) { break; }
     await new Promise(r => setTimeout(r, 300));
   }
@@ -637,7 +647,7 @@ function renderDetail(id){
   if (!dlg.open) dlg.showModal();
 }
 
-const VERSION = 'Nov 25, 6:40 PM';
+const VERSION = 'Nov 25, 7:00 PM';
 /* GitHub lets browsers keep a copy of this page for about ten minutes, and home screen apps hold on
    even longer. On opening, and whenever the app comes back to the front, ask the server for a fresh
    copy; if it is a newer version, reload once to pick it up. */
@@ -728,30 +738,41 @@ function renderAdd(){
     <div id="results"><p class="hint">Not finding it? Add the year or a name, like "Memento 2000" or "Memento Nolan". You can also paste an IMDb link.</p></div></div>`;
   dlg.showModal();
   const q = $('#q', dlg); q.focus();
-  let timer, seq = 0;
-  q.addEventListener('input', () => {
+  let timer, seq = 0, shown = '';
+  const run = async () => {
     clearTimeout(timer);
-    timer = setTimeout(async () => {
-      const term = q.value.trim(), box = $('#results', dlg), mySeq = ++seq;
-      if (term.length < 2) return;
-      try {
-        const { list, who } = await searchMovies(term);
-        if (mySeq !== seq) return;
-        box.innerHTML = resultsHTML(list, new Map()); box.scrollTop = 0;
-        const credits = await creditsFor(list.slice(0, 10));
-        if (mySeq !== seq) return;
-        let ordered = list;
-        if (who.length) {
-          const hit = x => { const c = credits.get(x.id); const names = c ? (c.director + ' ' + c.cast.join(' ')).toLowerCase() : ''; return who.every(w => names.includes(w.toLowerCase())); };
-          const first = list.filter(hit);
-          if (first.length) ordered = [...first, ...list.filter(x => !hit(x))];
-        }
-        box.innerHTML = resultsHTML(ordered, credits);
-      } catch (e) {
-        box.innerHTML = `<div class="empty">${e.message === 'nokey' ? 'Add your TMDB key in Settings first.' : esc(e.message)}</div>`;
+    const term = q.value.trim(), box = $('#results', dlg);
+    if (term.length < 2 || !box) return;
+    if (term === shown) return;
+    const mySeq = ++seq;
+    box.innerHTML = `<div class="empty">Searching…</div>`;
+    try {
+      const { list, who } = await searchMovies(term);
+      if (mySeq !== seq) return;
+      box.innerHTML = resultsHTML(list, new Map()); box.scrollTop = 0; shown = term;
+      const credits = await creditsFor(list.slice(0, 8));
+      if (mySeq !== seq) return;
+      let ordered = list;
+      if (who.length) {
+        const hit = x => { const c = credits.get(x.id); const names = c ? (c.director + ' ' + c.cast.join(' ')).toLowerCase() : ''; return who.every(w => names.includes(w.toLowerCase())); };
+        const first = list.filter(hit);
+        if (first.length) ordered = [...first, ...list.filter(x => !hit(x))];
       }
-    }, 350);
-  });
+      const keep = box.scrollTop;
+      box.innerHTML = resultsHTML(ordered, credits); box.scrollTop = keep;
+    } catch (e) {
+      if (mySeq !== seq) return;
+      shown = '';
+      box.innerHTML = `<div class="empty">${e.message === 'nokey' ? 'Add your TMDB key in Settings first.' : esc(e.message)}</div>
+        <button class="btn primary" data-act="searchagain">Try again</button>`;
+    }
+  };
+  S.searchRun = () => { shown = ''; run(); };
+  /* Typing invalidates any search still in flight, then starts a new one after a short pause. */
+  q.addEventListener('input', () => { seq++; shown = ''; clearTimeout(timer); timer = setTimeout(run, 300); });
+  q.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); shown = ''; run(); q.blur(); } });
+  q.addEventListener('search', run);
+  q.addEventListener('change', run);
 }
 
 const personLink = (name, pid, from) => `<button class="plink" data-act="person" data-pid="${pid || ''}" data-name="${esc(name)}" data-from="${from}">${esc(name)}</button>`;
@@ -839,6 +860,7 @@ document.addEventListener('click', async e => {
   else if (act === 'person') renderPerson(Number(el.dataset.pid) || 0, el.dataset.name, el.dataset.from);
   else if (act === 'open') renderDetail(id);
   else if (act === 'add') renderAdd();
+  else if (act === 'searchagain') S.searchRun?.();
   else if (act === 'settings') renderSettings();
   else if (act === 'close') { S.open = null; dlg.close(); }
   else if (act === 'pick') { dlg.close(); await addMovie(id); }

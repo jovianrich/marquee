@@ -417,11 +417,106 @@ function listen(){
   const fail = e => { if (e.code === 'permission-denied') { S.denied = true; render(); } else toast(e.message); };
   onSnapshot(collection(db, 'movies'), snap => {
     S.movies = new Map(snap.docs.map(d => [d.id, d.data()]));
-    S.ready = true; render(); refreshStale();
+    S.ready = true; render(); refreshStale(); applyLetterboxd();
   }, fail);
-  onSnapshot(doc(db, 'config', 'app'), d => { S.config = d.data() || {}; render(); refreshStale(); }, fail);
-  onSnapshot(doc(db, 'jellyfin', 'library'), d => { S.jf = d.data() || { items:{} }; buildApple(); render(); }, () => {});
+  onSnapshot(doc(db, 'config', 'app'), d => { S.config = d.data() || {}; render(); refreshStale(); applyLetterboxd(); }, fail);
+  onSnapshot(doc(db, 'jellyfin', 'library'), d => { S.jf = d.data() || { items:{} }; buildApple(); render(); applyLetterboxd(); }, () => {});
 }
+/* Letterboxd, automatic half: the Mac helper posts each followed member's recent diary entries.
+   For films on the list, mark them watched and copy the rating across. Each diary entry is applied
+   once, so moving a film back to the list afterwards sticks. */
+let lbBusy = false;
+async function applyLetterboxd(){
+  if (lbBusy || !S.ready || !S.user) return;
+  const members = S.config.letterboxd || {}, feeds = S.jf.letterboxd || {};
+  lbBusy = true;
+  try {
+    for (const [uid, member] of Object.entries(members)) {
+      const latest = new Map();
+      for (const row of feeds[String(member || '').toLowerCase()] || []) {
+        const [id, date, rating] = String(row).split('|');
+        if (!id || !date) continue;
+        const cur = latest.get(id);
+        if (!cur || date > cur.date) latest.set(id, { date, rating: Number(rating) || 0 });
+      }
+      for (const [id, entry] of latest) {
+        const m = S.movies.get(id);
+        if (!m || (m.lbSeen || {})[uid] === entry.date) continue;
+        const data = { ['lbSeen.' + uid]: entry.date };
+        if (!m.watched) { data.watched = true; data.watchedAt = Date.parse(entry.date + 'T12:00:00') || Date.now(); }
+        if (entry.rating) data['ratings.' + uid] = { name: nameOf(uid, 'Someone'), stars: entry.rating };
+        await updateDoc(doc(db, 'movies', id), data);
+      }
+    }
+  } catch (e) { /* try again on the next change */ } finally { lbBusy = false; }
+}
+/* Letterboxd, file half: a watchlist export adds films; a ratings or diary export fills in ratings. */
+function parseCSV(text){
+  const rows = []; let row = [], cur = '', quoted = false;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (quoted) { if (c === '"') { if (text[i + 1] === '"') { cur += '"'; i++; } else quoted = false; } else cur += c; }
+    else if (c === '"') quoted = true;
+    else if (c === ',') { row.push(cur); cur = ''; }
+    else if (c === '\n') { row.push(cur); rows.push(row); row = []; cur = ''; }
+    else if (c !== '\r') cur += c;
+  }
+  if (cur || row.length) { row.push(cur); rows.push(row); }
+  return rows;
+}
+function readLetterboxdFile(name, text){
+  const rows = parseCSV(text.replace(/^\uFEFF/, '')), head = (rows.shift() || []).map(h => h.trim().toLowerCase());
+  const col = n => head.indexOf(n), iName = col('name'), iYear = col('year'), iRating = col('rating');
+  const iDate = col('watched date') >= 0 ? col('watched date') : col('date');
+  if (iName < 0) throw new Error("That doesn't look like a Letterboxd export. It should have a Name column.");
+  const ratings = iRating >= 0 || /watched|diary|ratings|reviews/i.test(name);
+  const items = rows.filter(r => (r[iName] || '').trim()).map(r => ({ name: r[iName].trim(), year: (r[iYear] || '').trim(), rating: Number(r[iRating]) || 0, date: (r[iDate] || '').trim() }));
+  return { name, ratings, items };
+}
+async function findOnTmdb(it){
+  let r = await tmdb('/search/movie', { query: it.name, include_adult: 'false', ...(it.year ? { primary_release_year: it.year } : {}) });
+  if (!r.results.length && it.year) r = await tmdb('/search/movie', { query: it.name, include_adult: 'false' });
+  const close = x => !it.year || Math.abs(Number((x.release_date || '').slice(0, 4)) - Number(it.year)) <= 1;
+  return rankResults(r.results, it.name).filter(close)[0] || null;
+}
+async function importLetterboxd(job, onProgress){
+  const key = (t, y) => norm(t) + '|' + y;
+  const have = new Map([...S.movies.values()].map(m => [key(m.title, m.year), m]));
+  const find = it => [0, -1, 1].map(d => have.get(key(it.name, String(Number(it.year) + d)))).find(Boolean) || (it.year ? null : [...have.values()].find(m => norm(m.title) === norm(it.name)));
+  const stat = { added: 0, already: 0, rated: 0, notOnList: 0, missed: [] };
+  let done = 0;
+  for (const it of job.items) {
+    if (job.stop) break;
+    const existing = find(it);
+    try {
+      if (job.ratings) {
+        if (!existing) stat.notOnList++;
+        else {
+          const data = { watched: true, watchedAt: existing.watchedAt || Date.parse(it.date + 'T12:00:00') || Date.now() };
+          if (it.rating) data['ratings.' + S.user.uid] = { name: myName(), stars: it.rating };
+          await updateDoc(doc(db, 'movies', String(existing.id)), data); stat.rated++;
+        }
+      } else if (existing) stat.already++;
+      else {
+        const hit = await findOnTmdb(it);
+        if (!hit) stat.missed.push(it.name + (it.year ? ' (' + it.year + ')' : ''));
+        else if (S.movies.has(String(hit.id))) stat.already++;
+        else {
+          const m = await fetchMovie(hit.id);
+          await setDoc(doc(db, 'movies', String(m.id)), { ...m, addedBy: { uid: S.user.uid, name: myName() }, addedAt: Date.now(),
+            watched: false, ratings: {}, format: '', notes: '', why: 'From my Letterboxd watchlist', owned: '', wait: '' });
+          have.set(key(m.title, m.year), m); stat.added++;
+        }
+      }
+    } catch (e) {
+      if (e.message === 'nokey') throw e;
+      stat.missed.push(it.name + (it.year ? ' (' + it.year + ')' : ''));
+    }
+    onProgress(++done, job.items.length);
+  }
+  return stat;
+}
+const starText = n => '★'.repeat(Math.floor(n)) + (n % 1 ? '½' : '');
 async function addMovie(id){
   if (S.movies.has(String(id))) { toast('Already on the list'); return; }
   try {
@@ -652,8 +747,8 @@ function renderDetail(id){
       </select>
       <p class="hint">Owned movies move to the At home tab.</p></div>`}
     ${m.watched ? `<div class="block"><h3>Ratings</h3>
-      <div class="rate"><span>You</span><span class="stars">${[1,2,3,4,5].map(n => `<button class="${n <= mine ? 'on' : ''}" data-act="rate" data-n="${n}" aria-label="${n} stars">★</button>`).join('')}</span></div>
-      ${others.map(([uid, r]) => `<div class="rate"><span>${esc(nameOf(uid, r.name))}</span><span style="color:var(--accent)">${'★'.repeat(r.stars)}</span></div>`).join('')}
+      <div class="rate"><span>You${mine % 1 ? ` <span class="meta">${mine} from Letterboxd</span>` : ''}</span><span class="stars">${[1,2,3,4,5].map(n => `<button class="${n <= mine ? 'on' : ''}" data-act="rate" data-n="${n}" aria-label="${n} stars">★</button>`).join('')}</span></div>
+      ${others.map(([uid, r]) => `<div class="rate"><span>${esc(nameOf(uid, r.name))}</span><span style="color:var(--accent)">${starText(Number(r.stars) || 0)}</span></div>`).join('')}
     </div>` : ''}
     <button class="btn ${m.watched ? '' : 'primary'}" data-act="watched">${m.watched ? 'Move back to the list' : 'Mark as watched'}</button>
     <button class="btn" data-act="refresh">Refresh availability</button>
@@ -662,7 +757,7 @@ function renderDetail(id){
   if (!dlg.open) dlg.showModal();
 }
 
-const VERSION = 'Nov 25, 7:30 PM';
+const VERSION = 'Nov 25, 8:45 PM';
 /* GitHub lets browsers keep a copy of this page for about ten minutes, and home screen apps hold on
    even longer. On opening, and whenever the app comes back to the front, ask the server for a fresh
    copy; if it is a newer version, reload once to pick it up. */
@@ -835,6 +930,11 @@ function renderSettings(){
     <div class="block"><h3>My services</h3>
       ${SERVICES.map(s => `<label class="check"><input type="checkbox" data-svc="${s.id}" ${!Array.isArray(on) || on.includes(s.id) ? 'checked' : ''}>${s.name}</label>`).join('')}
     </div>
+    <div class="block"><h3>Letterboxd</h3>
+      <input class="field" id="lbuser" placeholder="Your Letterboxd username" value="${esc((S.config.letterboxd || {})[S.user.uid] || '')}" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false">
+      <p class="hint">${S.jf.letterboxdUpdatedAt ? 'Feed last read ' + new Date(S.jf.letterboxdUpdatedAt).toLocaleString() + '.' : 'Films you log there are marked watched here, with your rating, once the Mac helper follows this username.'}</p>
+      <label class="btn" style="cursor:pointer">Import a Letterboxd file<input type="file" id="lbfile" accept=".csv,text/csv,text/comma-separated-values" hidden></label>
+      <div id="lbstatus" class="hint">Use the watchlist export to add films, or the ratings or diary export to fill in your ratings.</div></div>
     <div class="block"><h3>TMDB key</h3>
       <input class="field" id="tmdbkey" placeholder="API Key or API Read Access Token" value="${esc(S.config.tmdbKey || '')}" autocomplete="off" autocapitalize="off" spellcheck="false">
       <p class="hint">From themoviedb.org → Settings → API. Either value works.</p></div>
@@ -876,6 +976,25 @@ document.addEventListener('click', async e => {
   else if (act === 'open') renderDetail(id);
   else if (act === 'add') renderAdd();
   else if (act === 'searchagain') S.searchRun?.();
+  else if (act === 'lbstop') { if (S.lbJob) S.lbJob.stop = true; }
+  else if (act === 'lbimport') {
+    const job = S.lbJob, box = $('#lbstatus', dlg);
+    if (!job || job.running) return;
+    job.running = true;
+    box.innerHTML = `<span id="lbprog">Starting…</span><button class="btn" data-act="lbstop">Stop</button>`;
+    try {
+      const st = await importLetterboxd(job, (done, total) => { const p = $('#lbprog', dlg); if (p) p.textContent = `Working: ${done} of ${total}`; });
+      const parts = job.ratings
+        ? [`${st.rated} marked watched`, st.notOnList ? `${st.notOnList} skipped (not on your list)` : '']
+        : [`${st.added} added`, st.already ? `${st.already} already on your list` : ''];
+      const out = $('#lbstatus', dlg);
+      if (out) out.innerHTML = `${job.stop ? 'Stopped. ' : 'Done. '}${esc(parts.filter(Boolean).join(', '))}.${st.missed.length ? `<br>Could not match ${st.missed.length}: ${esc(st.missed.slice(0, 15).join('; '))}${st.missed.length > 15 ? '; and more' : ''}.` : ''}`;
+    } catch (err) {
+      const out = $('#lbstatus', dlg);
+      if (out) out.textContent = err.message === 'nokey' ? 'Add your TMDB key first.' : err.message;
+    }
+    S.lbJob = null;
+  }
   else if (act === 'settings') renderSettings();
   else if (act === 'close') { S.open = null; dlg.close(); }
   else if (act === 'pick') { dlg.close(); await addMovie(id); }
@@ -897,7 +1016,8 @@ document.addEventListener('click', async e => {
   else if (act === 'savesettings') {
     const services = [...dlg.querySelectorAll('[data-svc]')].filter(c => c.checked).map(c => c.dataset.svc);
     const mine = $('#myname', dlg).value.trim() || firstName(S.user);
-    await saveConfig({ services, tmdbKey: $('#tmdbkey', dlg).value.trim(), jellyfinUrl: $('#jfurl', dlg).value.trim(), names: { [S.user.uid]: mine } });
+    await saveConfig({ services, tmdbKey: $('#tmdbkey', dlg).value.trim(), jellyfinUrl: $('#jfurl', dlg).value.trim(), names: { [S.user.uid]: mine },
+      letterboxd: { [S.user.uid]: $('#lbuser', dlg).value.trim().replace(/^@/, '').toLowerCase() } });
     S.refreshed = false; dlg.close(); toast('Saved');
   }
   else if (act === 'export') {
@@ -906,7 +1026,17 @@ document.addEventListener('click', async e => {
     a.download = 'marquee-' + new Date().toISOString().slice(0, 10) + '.json'; a.click();
   }
 });
-dlg.addEventListener('change', e => {
+dlg.addEventListener('change', async e => {
+  if (e.target.id === 'lbfile' && e.target.files[0]) {
+    const file = e.target.files[0], box = $('#lbstatus', dlg);
+    try {
+      S.lbJob = readLetterboxdFile(file.name, await file.text());
+      box.innerHTML = `${S.lbJob.items.length} films found in ${esc(file.name)}. ${S.lbJob.ratings ? 'Films already on your list will be marked watched with your rating.' : 'Films not already on your list will be added.'}
+        <button class="btn primary" data-act="lbimport">${S.lbJob.ratings ? 'Fill in ratings' : 'Add to my list'}</button>`;
+    } catch (err) { box.textContent = err.message; }
+    e.target.value = '';
+    return;
+  }
   const key = e.target.dataset.change;
   if (key && S.open) patch(S.open, { [key]: e.target.value });
 });

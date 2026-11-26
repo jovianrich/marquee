@@ -9,42 +9,50 @@
 <meta name="apple-mobile-web-app-title" content="Marquee">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="theme-color" content="#faf6ef" media="(prefers-color-scheme: light)">
-<meta name="theme-color" content="#14110f" media="(prefers-color-scheme: dark)">
+<meta name="theme-color" content="#15110d" media="(prefers-color-scheme: dark)">
 <link rel="apple-touch-icon" href="icon-180.png">
 <link rel="icon" href="icon-180.png">
 <link rel="manifest" href="manifest.webmanifest">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Inter:wght@400;600;700;800&display=swap">
 <style>
 :root{
   color-scheme: light dark;
-  --bg:#faf6ef; --card:#ffffff; --text:#221c16; --muted:#75695c; --line:#e6ddd0;
-  --accent:#b46a00; --accent-ink:#ffffff; --chip:#f1e9dc; --danger:#b3261e;
+  --bg:#faf6ef; --card:#ffffff; --text:#221c16; --muted:#6b5f52; --line:#d9cfc0;
+  --accent:#a35f00; --accent-ink:#ffffff; --chip:#f1e9dc; --danger:#b3261e; --board:#ffffff; --stubrow:#f4ede1;
+  --display:'Bebas Neue','Arial Narrow',sans-serif;
 }
 @media (prefers-color-scheme: dark){
   :root{
-    --bg:#14110f; --card:#1f1b18; --text:#f4ece1; --muted:#a89b8b; --line:#332c26;
-    --accent:#f2b04a; --accent-ink:#1b1408; --chip:#2a241f; --danger:#ff8a80;
+    --bg:#15110d; --card:#1d1711; --text:#f6eee2; --muted:#b9aa96; --line:#4a3f33;
+    --accent:#f2b04a; --accent-ink:#1b1408; --chip:#261e16; --danger:#ff8a80; --board:#0b0806; --stubrow:#1d1711;
   }
 }
 *{box-sizing:border-box}
 html,body{margin:0;background:var(--bg);color:var(--text);
-  font:16px/1.4 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;-webkit-text-size-adjust:100%}
+  font:16px/1.4 Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;-webkit-text-size-adjust:100%}
 button,input,select,textarea{font:inherit;color:inherit}
 button{cursor:pointer;-webkit-tap-highlight-color:transparent}
 header{position:sticky;top:0;z-index:5;background:var(--bg);
   padding:calc(env(safe-area-inset-top) + 8px) 16px 0;border-bottom:1px solid var(--line)}
 .top{display:flex;align-items:center;justify-content:space-between;gap:12px}
-h1{margin:0;font-size:26px;letter-spacing:.14em;text-transform:uppercase;font-weight:800;color:var(--accent)}
+h1{margin:0;font-family:var(--display);font-size:40px;line-height:1;letter-spacing:.14em;text-transform:uppercase;font-weight:400;color:var(--accent)}
+.bulbs{border-top:6px dotted var(--accent);height:0;margin:8px 0 12px}
+.topbtns{display:flex;align-items:center;gap:4px}
+.addbtn{height:44px;padding:0 14px;border:0;border-radius:4px;background:var(--accent);color:var(--accent-ink);font-family:var(--display);font-size:22px;letter-spacing:.08em;text-transform:uppercase;white-space:nowrap}
 .iconbtn{border:0;background:var(--chip);width:40px;height:40px;border-radius:20px;font-size:18px}
 .gear{width:50px;height:50px;border-radius:25px;font-size:30px;line-height:1;background:none;color:var(--text);padding:0}
-.views{display:grid;grid-template-columns:repeat(3,1fr);margin-top:6px;border-bottom:1px solid var(--line)}
-.view{border:0;background:none;padding:10px 0 9px;font-size:15px;font-weight:700;color:var(--muted);
-  border-bottom:3px solid transparent;margin-bottom:-1px}
-.view.on{color:var(--text);border-bottom-color:var(--accent)}
-.view small{font-weight:600;font-size:12px;opacity:.7;margin-left:4px}
-.where{display:grid;grid-template-columns:repeat(5,1fr);gap:5px;padding:10px 0}
-.seg{border:1px solid var(--line);border-radius:10px;background:none;padding:6px 2px 7px;display:flex;
+.views{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;padding-bottom:12px}
+.view{height:44px;border:1px solid var(--line);border-radius:4px;background:none;color:var(--text);
+  font-family:var(--display);font-size:22px;letter-spacing:.08em;text-transform:uppercase;padding:0}
+.view.on{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.view small{font-size:22px;margin-left:6px;opacity:.8}
+.where{position:fixed;left:0;right:0;bottom:0;z-index:6;display:grid;grid-template-columns:repeat(5,1fr);gap:5px;
+  padding:8px 16px calc(env(safe-area-inset-bottom) + 8px);background:var(--bg);border-top:1px solid var(--line)}
+.seg{white-space:nowrap;height:58px;border:1px solid var(--line);border-radius:4px;background:none;padding:0 2px;display:flex;
   flex-direction:column;align-items:center;justify-content:center;gap:1px;font-size:11px;font-weight:600;color:var(--muted);line-height:1.15;text-align:center}
-.seg b{font-size:17px;font-weight:800;color:var(--text)}
+.seg b{font-family:var(--display);font-size:22px;font-weight:400;line-height:1;color:var(--text)}
 .seg.on{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
 .seg.on b{color:inherit}
 .tabs{display:flex;flex-wrap:wrap;gap:6px;padding:12px 0 10px}
@@ -52,7 +60,7 @@ h1{margin:0;font-size:26px;letter-spacing:.14em;text-transform:uppercase;font-we
   padding:7px 13px;font-size:14px;font-weight:600;color:var(--muted);white-space:nowrap}
 .tab.on{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
 .tab b{font-weight:700;opacity:.8;margin-left:5px}
-main{padding:14px 16px calc(env(safe-area-inset-bottom) + 96px)}
+main{padding:14px 16px calc(env(safe-area-inset-bottom) + 100px)}
 .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(104px,1fr));gap:12px;align-items:start}
 .movie{border:0;padding:0;background:none;text-align:left;position:relative;display:block;align-self:start;width:100%}
 .poster{width:100%;aspect-ratio:2/3;border-radius:10px;background:var(--chip);object-fit:cover;display:block}
@@ -69,20 +77,30 @@ main{padding:14px 16px calc(env(safe-area-inset-bottom) + 96px)}
 .src{width:24px;height:24px;border-radius:6px;background:var(--text);color:var(--bg);font-size:14px;font-weight:800;
   display:flex;align-items:center;justify-content:center;box-shadow:0 1px 4px rgba(0,0,0,.35)}
 .empty{text-align:center;color:var(--muted);padding:56px 20px}
-.tonight h2{font-size:23px;line-height:1.2;margin:4px 0 4px}
-.lab{font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin:16px 0 7px;font-weight:700}
-.chips{display:flex;flex-wrap:wrap;gap:6px}
-.chip{border:1px solid var(--line);background:transparent;border-radius:999px;padding:7px 13px;font-size:14px;font-weight:600;color:var(--muted)}
-.chip.on{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
-.row2{display:flex;gap:10px;margin-bottom:18px}
+.board{background:var(--board);border:2px solid var(--accent);border-radius:6px;padding:14px 12px 12px;display:flex;flex-direction:column;gap:8px}
+.boardhead{display:flex;justify-content:space-between;align-items:baseline;gap:10px}
+.boardhead .meta{text-align:right}
+.boardlab{white-space:nowrap;font-family:var(--display);font-size:20px;letter-spacing:.2em;text-transform:uppercase;color:var(--accent)}
+.stubrow{display:flex;min-height:72px;padding:0;border:0;border-radius:4px;overflow:hidden;background:var(--stubrow);color:var(--text);text-align:left;width:100%}
+.stub{flex:none;width:66px;background:var(--accent);color:var(--accent-ink);display:flex;flex-direction:column;align-items:center;justify-content:center}
+.stub b{font-family:var(--display);font-size:36px;font-weight:400;line-height:.9}
+.stub i{font-style:normal;font-size:11px;font-weight:700;letter-spacing:.12em}
+.stubbody{flex:1;min-width:0;border-left:3px dashed var(--board);padding:8px 10px;display:flex;flex-direction:column;justify-content:center;gap:3px}
+.st{font-family:var(--display);font-size:24px;line-height:1;letter-spacing:.05em;text-transform:uppercase}
+.sm{font-size:12px;color:var(--muted)}
+.chips{display:flex;flex-wrap:wrap;gap:6px;margin:14px 0 0}
+.chip{height:44px;padding:0 14px;border:1px solid var(--line);background:transparent;border-radius:4px;font-size:13px;font-weight:600;color:var(--text)}
+.chip.on{background:var(--text);border-color:var(--text);color:var(--bg);font-weight:700}
+.row2{display:flex;gap:8px;margin-bottom:18px}
 .row2 .btn{margin-top:12px}
+.btn.outline{background:none;border:1px solid var(--accent);color:var(--accent)}
 .alist{border-top:1px solid var(--line)}
 .arow{display:flex;justify-content:space-between;align-items:baseline;gap:14px;width:100%;border:0;
   border-bottom:1px solid var(--line);background:none;padding:13px 2px;text-align:left;font-size:16px}
 .arow .y{color:var(--muted);font-size:14px;flex:0 0 auto;font-variant-numeric:tabular-nums}
 .grid.one{grid-template-columns:minmax(0,210px);justify-content:center}
 .grid.three{grid-template-columns:repeat(3,minmax(0,1fr))}
-.fab{position:fixed;right:18px;bottom:calc(env(safe-area-inset-bottom) + 20px);z-index:6;border:0;
+.fab{position:fixed;right:16px;bottom:calc(env(safe-area-inset-bottom) + 88px);z-index:7;border:0;
   background:var(--accent);color:var(--accent-ink);height:56px;padding:0 22px;border-radius:28px;
   font-weight:800;font-size:16px;box-shadow:0 6px 18px rgba(0,0,0,.28)}
 footer{text-align:center;font-size:12px;color:var(--muted);padding:26px 0 0}
@@ -116,7 +134,7 @@ dialog::backdrop{background:rgba(0,0,0,.55)}
 .prov img{width:26px;height:26px;border-radius:6px}
 .prov.mine{outline:2px solid var(--accent)}
 .none{color:var(--muted);font-size:13px;padding-top:6px}
-.btn{display:block;width:100%;border:0;border-radius:12px;padding:13px;font-weight:700;margin-top:10px;
+.btn{display:block;width:100%;border:0;border-radius:6px;padding:13px;font-weight:700;margin-top:10px;
   background:var(--chip);text-align:center;text-decoration:none;color:var(--text)}
 .btn.primary{background:var(--accent);color:var(--accent-ink)}
 .btn.danger{background:none;color:var(--danger)}
@@ -130,7 +148,7 @@ label.check input{width:20px;height:20px;accent-color:var(--accent)}
 .center{min-height:100dvh;display:flex;flex-direction:column;align-items:center;justify-content:center;
   padding:30px;text-align:center;gap:14px}
 .center .btn{max-width:300px}
-.toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(env(safe-area-inset-bottom) + 90px);
+.toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(env(safe-area-inset-bottom) + 92px);
   background:var(--text);color:var(--bg);padding:10px 16px;border-radius:999px;font-size:14px;z-index:20;max-width:88vw}
 select.field,textarea.field{margin-top:8px}
 </style>
@@ -422,27 +440,46 @@ function card(m){
     <div class="s">${esc(sub)}${m.rewatch ? ' · ↻' : ''}</div>
   </button>`;
 }
+function shuffled(list){
+  const a = [...list];
+  for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; }
+  return a;
+}
+function stubRow(m){
+  const cat = classify(m);
+  const bits = [m.year, whereLabel(m, cat), m.rewatch ? 'Rewatch' : 'Added by ' + nameOf(m.addedBy?.uid, m.addedBy?.name)].filter(Boolean);
+  return `<button class="stubrow" data-act="open" data-id="${m.id}">
+    <span class="stub"><b>${m.runtime || '?'}</b><i>MIN</i></span>
+    <span class="stubbody"><span class="st">${esc(m.title)}</span><span class="sm">${esc(bits.join(' · '))}</span></span>
+  </button>`;
+}
 function tonightHTML(){
-  const pool = tonightPool();
-  const picks = S.tn.picks.map(id => S.movies.get(id)).filter(m => m && pool.includes(m));
-  /* Only offer choices that have at least one movie ready to watch, given the other filter. */
-  const chips = (k, opts) => `<div class="chips">${opts.map(o => {
-    const n = o.id === 'any' ? null : tonightPool({ [k]: o.id }).length;
+  const pool = tonightPool(), ids = pool.map(m => String(m.id));
+  S.tn.picks = S.tn.picks.filter(id => ids.includes(id));
+  if (!S.tn.picks.length && ids.length) S.tn.picks = shuffled(ids).slice(0, 3);
+  const picks = S.tn.picks.map(id => S.movies.get(id)).filter(Boolean);
+  const none = S.tn.time === 'any' && S.tn.mood === 'any' && S.tn.seen === 'any' && !S.tn.rent;
+  /* Only offer choices that have at least one movie ready to watch, given the other filters. */
+  const group = (k, opts) => opts.filter(o => o.id !== 'any').map(o => {
+    const n = tonightPool({ [k]: o.id }).length;
     if (n === 0 && S.tn[k] !== o.id) return '';
-    return `<button class="chip ${S.tn[k] === o.id ? 'on' : ''}" data-act="tn" data-k="${k}" data-v="${o.id}">${o.label}${n === null ? '' : ` <b style="opacity:.75;margin-left:3px">${n}</b>`}</button>`;
-  }).join('')}</div>`;
+    return `<button class="chip ${S.tn[k] === o.id ? 'on' : ''}" data-act="tn" data-k="${k}" data-v="${o.id}">${o.label} · ${n}</button>`;
+  }).join('');
+  const extra = tonightPool({ rent: true }).length - tonightPool({ rent: false }).length;
   return `<section class="tonight">
-    <h2>Showing next</h2>
-    <div class="lab">How much time?</div>${chips('time', TIMES)}
-    <div class="lab">In the mood for</div>${chips('mood', MOODS)}
-    <div class="lab">Seen it before?</div>${chips('seen', SEEN)}
-    <label class="check" style="margin-top:8px"><input type="checkbox" data-act="tnrent" ${S.tn.rent ? 'checked' : ''}>Include movies we'd need to rent or buy</label>
-    <div class="meta">${pool.length} ${pool.length === 1 ? 'movie fits' : 'movies fit'}</div>
-    ${pool.length ? `<div class="row2">
-      <button class="btn primary" data-act="roll" data-n="1">${picks.length === 1 ? 'Pick another' : 'Pick one for us'}</button>
-      <button class="btn" data-act="roll" data-n="3">${picks.length > 1 ? 'Three more' : 'Show three'}</button></div>`
-      : `<div class="empty">${S.movies.size ? 'Nothing fits. Try a different length or mood, or include rent or buy.' : 'Your list is empty. Tap + Add movie to start.'}</div>`}
-    ${picks.length ? `<div class="grid ${picks.length === 1 ? 'one' : 'three'}">${picks.map(card).join('')}</div>` : ''}
+    <div class="board">
+      <div class="boardhead"><span class="boardlab">Now showing</span><span class="meta">${picks.length} of ${pool.length} ready tonight</span></div>
+      ${picks.length ? picks.map(stubRow).join('') : `<div class="empty" style="padding:26px 10px">${S.movies.size ? 'Nothing fits. Clear a filter, or include rent or buy.' : 'Your list is empty. Tap + Add movie to start.'}</div>`}
+    </div>
+    <div class="chips">
+      <button class="chip ${none ? 'on' : ''}" data-act="tnclear">Anything</button>
+      ${group('time', TIMES)}${group('mood', MOODS)}${group('seen', SEEN)}
+      ${extra > 0 || S.tn.rent ? `<button class="chip ${S.tn.rent ? 'on' : ''}" data-act="tnrent">Rent or buy${S.tn.rent ? '' : ' · ' + extra}</button>` : ''}
+    </div>
+    <div class="row2">
+      <button class="btn primary" data-act="roll" data-n="1">Pick one for us</button>
+      <button class="btn outline" data-act="roll" data-n="3">Show three</button>
+    </div>
   </section>`;
 }
 function render(){
@@ -477,9 +514,9 @@ function render(){
   }[S.tab];
   app.innerHTML = `
     <header>
-      <div class="top"><h1>Marquee</h1><button class="iconbtn gear" data-act="settings" aria-label="Settings">⚙︎</button></div>
+      <div class="top"><h1>Marquee</h1><span class="topbtns"><button class="addbtn" data-act="add">+ Add</button><button class="iconbtn gear" data-act="settings" aria-label="Settings">⚙︎</button></span></div>
+      <div class="bulbs" aria-hidden="true"></div>
       <nav class="views">${[['tonight', 'Next'], ['all', 'List'], ['watched', 'Watched']].map(([id, label]) => `<button class="view ${id === S.tab ? 'on' : ''}" data-act="tab" data-id="${id}">${label}${id === 'tonight' ? '' : `<small>${groups[id].length}</small>`}</button>`).join('')}</nav>
-      <nav class="where">${[['home', 'At home'], ['stream', 'Streaming'], ['rent', 'Rent or buy'], ['soon', 'Coming soon'], ['hunt', 'Track down']].map(([id, label]) => `<button class="seg ${id === S.tab ? 'on' : ''}" data-act="tab" data-id="${id}"><b>${groups[id].length}</b>${label}</button>`).join('')}</nav>
     </header>
     <main>
       ${!S.config.tmdbKey ? `<div class="block" style="margin:0 0 14px"><h3>One-time setup</h3>Paste your TMDB key in Settings so Marquee can look up movies.<button class="btn primary" data-act="settings">Open Settings</button></div>` : ''}
@@ -488,7 +525,7 @@ function render(){
         Streaming availability from <a href="https://www.justwatch.com" target="_blank" rel="noopener">JustWatch</a>.<br>
         This product uses the TMDB API but is not endorsed or certified by TMDB.</footer>
     </main>
-    <button class="fab" data-act="add">+ Add movie</button>`;
+    <nav class="where">${[['home', 'At home'], ['stream', 'Streaming'], ['rent', 'Rent / buy'], ['soon', 'Soon'], ['hunt', 'Track down']].map(([id, label]) => `<button class="seg ${id === S.tab ? 'on' : ''}" data-act="tab" data-id="${id}"><b>${groups[id].length}</b>${label}</button>`).join('')}</nav>`;
   if (S.open && dlg.open) renderDetail(S.open);
 }
 
@@ -634,13 +671,13 @@ document.addEventListener('click', async e => {
   }
   else if (act === 'signout') { if (dlg.open) dlg.close(); await signOut(auth); location.reload(); }
   else if (act === 'tab') { S.tab = id; S.tabChosen = true; render(); window.scrollTo(0, 0); }
-  else if (act === 'tn') { S.tn[el.dataset.k] = el.dataset.v; S.tn.picks = []; render(); }
-  else if (act === 'tnrent') { S.tn.rent = el.checked; S.tn.picks = []; render(); }
+  else if (act === 'tn') { const k = el.dataset.k; S.tn[k] = S.tn[k] === el.dataset.v ? 'any' : el.dataset.v; S.tn.picks = []; render(); }
+  else if (act === 'tnrent') { S.tn.rent = !S.tn.rent; S.tn.picks = []; render(); }
+  else if (act === 'tnclear') { S.tn = { time:'any', mood:'any', seen:'any', rent:false, picks:[] }; render(); }
   else if (act === 'roll') {
     const n = Number(el.dataset.n), pool = tonightPool().map(m => String(m.id));
     const fresh = pool.filter(x => !S.tn.picks.includes(x));
-    const from = fresh.length >= Math.min(n, pool.length) ? fresh : pool;
-    for (let i = from.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [from[i], from[j]] = [from[j], from[i]]; }
+    const from = shuffled(fresh.length >= Math.min(n, pool.length) ? fresh : pool);
     S.tn.picks = from.slice(0, n); render();
   }
   else if (act === 'open') renderDetail(id);

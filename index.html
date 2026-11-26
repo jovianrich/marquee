@@ -110,9 +110,16 @@ dialog{border:0;padding:0;background:var(--bg);color:var(--text);width:100%;max-
   max-height:92dvh;border-radius:18px 18px 0 0;margin:auto auto 0;overflow:auto}
 dialog::backdrop{background:rgba(0,0,0,.55)}
 @media (min-width:600px){dialog{border-radius:18px;margin:auto}}
-dialog.top{margin:0 auto auto;border-radius:0 0 18px 18px;height:100dvh;max-height:100dvh}
-dialog.top .sheet{padding-top:0}
-.stick{position:sticky;top:0;z-index:2;background:var(--bg);padding:calc(env(safe-area-inset-top) + 12px) 0 10px}
+dialog.top{position:fixed;inset:auto;top:var(--vvt,0px);left:0;right:0;margin:0 auto;width:100%;max-width:560px;
+  height:var(--vvh,100dvh);max-height:none;border-radius:0;overflow:hidden}
+dialog.top[open]{display:flex;flex-direction:column}
+dialog.top .sheet{flex:1;min-height:0;display:flex;flex-direction:column;padding:0 16px}
+dialog.top #results{flex:1;min-height:0;overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;
+  padding-bottom:calc(env(safe-area-inset-bottom) + 16px)}
+html.lock,html.lock body{overflow:hidden}
+.stick{flex:none;background:var(--bg);padding:calc(env(safe-area-inset-top) + 12px) 0 10px}
+.result .ov{font-size:12px;color:var(--muted);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;margin-top:2px}
+.result{align-items:flex-start}
 .stick .sheethead{margin-bottom:10px}
 .sheet{padding:16px 16px calc(env(safe-area-inset-bottom) + 22px)}
 .sheethead{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;gap:10px}
@@ -622,37 +629,100 @@ function renderDetail(id){
   if (!dlg.open) dlg.showModal();
 }
 
+const VERSION = 'Nov 25, 5:50 PM';
+function fitViewport(){
+  const v = window.visualViewport; if (!v) return;
+  document.documentElement.style.setProperty('--vvh', v.height + 'px');
+  document.documentElement.style.setProperty('--vvt', v.offsetTop + 'px');
+}
+if (window.visualViewport) {
+  window.visualViewport.addEventListener('resize', fitViewport);
+  window.visualViewport.addEventListener('scroll', fitViewport);
+}
+fitViewport();
+
+/* Best match first: exact title, then titles starting with the words typed, then by how well known the film is. */
+function rankResults(list, q){
+  const nq = norm(q);
+  const score = r => (norm(r.title) === nq || norm(r.original_title) === nq ? 1e6 : norm(r.title).startsWith(nq) ? 1e3 : 0)
+    + Math.log10((r.vote_count || 0) + 1) * 200 + (r.popularity || 0);
+  return [...list].sort((a, b) => score(b) - score(a));
+}
+/* Accepts a title, a title plus year ("Memento 2000"), a title plus a name ("Memento Nolan"),
+   or a pasted IMDb or TMDB link. */
+async function searchMovies(text){
+  const imdb = text.match(/tt\d{6,}/);
+  if (imdb) { const r = await tmdb('/find/' + imdb[0], { external_source: 'imdb_id' }); return { list: r.movie_results || [], who: [] }; }
+  const direct = text.match(/themoviedb\.org\/movie\/(\d+)/);
+  if (direct) { return { list: [await tmdb('/movie/' + direct[1])], who: [] }; }
+  const all = text.trim().split(/\s+/);
+  let words = [...all], year = '';
+  const yi = words.findIndex((w, i) => i > 0 && /^(19|20)\d\d$/.test(w) && Number(w) <= new Date().getFullYear() + 1);
+  if (yi > 0) { year = words[yi]; words.splice(yi, 1); }
+  for (let drop = 0; drop <= Math.min(2, words.length - 1); drop++) {
+    const q = words.slice(0, words.length - drop).join(' '), who = words.slice(words.length - drop);
+    const params = { query: q, include_adult: 'false' };
+    if (year) params.primary_release_year = year;
+    let r = await tmdb('/search/movie', params);
+    if (!r.results.length && year) r = await tmdb('/search/movie', { query: q, include_adult: 'false', year });
+    if (r.results.length) return { list: rankResults(r.results, q), who };
+  }
+  const r = await tmdb('/search/movie', { query: all.join(' '), include_adult: 'false' });
+  return { list: rankResults(r.results, all.join(' ')), who: [] };
+}
+async function creditsFor(list){
+  const out = new Map();
+  await Promise.all(list.map(async x => {
+    try { out.set(x.id, pickCredits({ credits: await tmdb('/movie/' + x.id + '/credits') })); } catch (e) { /* leave blank */ }
+  }));
+  return out;
+}
+function resultsHTML(list, credits){
+  return list.slice(0, 20).map(x => {
+    const c = credits.get(x.id), who = c ? [c.director && 'Dir. ' + c.director, c.cast.slice(0, 2).join(', ')].filter(Boolean).join(' · ') : '';
+    return `<button class="result" data-act="pick" data-id="${x.id}">
+      ${x.poster_path ? `<img alt="" src="${IMG}w92${esc(x.poster_path)}">` : `<div class="ph"></div>`}
+      <div><div style="font-weight:600">${esc(x.title)} <span class="meta">${esc((x.release_date || '').slice(0, 4))}</span></div>
+        ${who ? `<div class="meta">${esc(who)}</div>` : ''}
+        ${x.overview ? `<div class="ov">${esc(x.overview)}</div>` : ''}
+        ${S.movies.has(String(x.id)) ? `<div class="on">On your list</div>` : ''}</div>
+    </button>`;
+  }).join('') || `<div class="empty">No matches. Try adding the year or the director, or paste an IMDb link.</div>`;
+}
 function renderAdd(){
   S.open = null;
-  dlg.classList.add('top');
+  dlg.classList.add('top'); document.documentElement.classList.add('lock'); fitViewport();
   dlg.innerHTML = `<div class="sheet">
     <div class="stick">
       <div class="sheethead"><h2>Add a movie</h2><button class="iconbtn" data-act="close" aria-label="Close">✕</button></div>
-      <input class="field" id="q" type="search" placeholder="Search by title" autocomplete="off" autocorrect="off" enterkeyhint="search">
+      <input class="field" id="q" type="search" placeholder="Title, plus year or director if needed" autocomplete="off" autocorrect="off" enterkeyhint="search">
     </div>
-    <div id="results"></div></div>`;
-  dlg.showModal(); dlg.scrollTop = 0;
+    <div id="results"><p class="hint">Not finding it? Add the year or a name, like "Memento 2000" or "Memento Nolan". You can also paste an IMDb link.</p></div></div>`;
+  dlg.showModal();
   const q = $('#q', dlg); q.focus();
   let timer, seq = 0;
   q.addEventListener('input', () => {
     clearTimeout(timer);
     timer = setTimeout(async () => {
       const term = q.value.trim(), box = $('#results', dlg), mySeq = ++seq;
-      if (term.length < 2) { box.innerHTML = ''; return; }
+      if (term.length < 2) return;
       try {
-        const r = await tmdb('/search/movie', { query: term, include_adult: 'false' });
+        const { list, who } = await searchMovies(term);
         if (mySeq !== seq) return;
-        box.innerHTML = r.results.slice(0, 12).map(x => `
-          <button class="result" data-act="pick" data-id="${x.id}">
-            ${x.poster_path ? `<img alt="" src="${IMG}w92${esc(x.poster_path)}">` : `<div class="ph"></div>`}
-            <div><div style="font-weight:600">${esc(x.title)}</div>
-              <div class="meta">${esc((x.release_date || '').slice(0, 4))}</div>
-              ${S.movies.has(String(x.id)) ? `<div class="on">On your list</div>` : ''}</div>
-          </button>`).join('') || `<div class="empty">No matches</div>`;
+        box.innerHTML = resultsHTML(list, new Map()); box.scrollTop = 0;
+        const credits = await creditsFor(list.slice(0, 10));
+        if (mySeq !== seq) return;
+        let ordered = list;
+        if (who.length) {
+          const hit = x => { const c = credits.get(x.id); const names = c ? (c.director + ' ' + c.cast.join(' ')).toLowerCase() : ''; return who.every(w => names.includes(w.toLowerCase())); };
+          const first = list.filter(hit);
+          if (first.length) ordered = [...first, ...list.filter(x => !hit(x))];
+        }
+        box.innerHTML = resultsHTML(ordered, credits);
       } catch (e) {
         box.innerHTML = `<div class="empty">${e.message === 'nokey' ? 'Add your TMDB key in Settings first.' : esc(e.message)}</div>`;
       }
-    }, 300);
+    }, 350);
   });
 }
 
@@ -677,6 +747,7 @@ function renderSettings(){
     <button class="btn primary" data-act="savesettings">Save</button>
     <button class="btn" data-act="export">Export list</button>
     <button class="btn danger" data-act="signout">Sign out</button>
+    <p class="hint" style="text-align:center">Marquee version ${VERSION}</p>
   </div>`;
   dlg.showModal();
 }
@@ -741,7 +812,7 @@ dlg.addEventListener('change', e => {
   if (key && S.open) patch(S.open, { [key]: e.target.value });
 });
 dlg.addEventListener('click', e => { if (e.target === dlg) { S.open = null; dlg.close(); } });
-dlg.addEventListener('close', () => { S.open = null; dlg.classList.remove('top'); });
+dlg.addEventListener('close', () => { S.open = null; dlg.classList.remove('top'); document.documentElement.classList.remove('lock'); });
 
 let listening = false;
 onAuthStateChanged(auth, user => {

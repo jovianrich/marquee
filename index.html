@@ -31,10 +31,22 @@ html,body{margin:0;background:var(--bg);color:var(--text);
 button,input,select,textarea{font:inherit;color:inherit}
 button{cursor:pointer;-webkit-tap-highlight-color:transparent}
 header{position:sticky;top:0;z-index:5;background:var(--bg);
-  padding:calc(env(safe-area-inset-top) + 10px) 16px 0;border-bottom:1px solid var(--line)}
+  padding:calc(env(safe-area-inset-top) + 8px) 16px 0;border-bottom:1px solid var(--line)}
 .top{display:flex;align-items:center;justify-content:space-between;gap:12px}
 h1{margin:0;font-size:26px;letter-spacing:.14em;text-transform:uppercase;font-weight:800;color:var(--accent)}
 .iconbtn{border:0;background:var(--chip);width:40px;height:40px;border-radius:20px;font-size:18px}
+.gear{width:50px;height:50px;border-radius:25px;font-size:30px;line-height:1;background:none;color:var(--text);padding:0}
+.views{display:grid;grid-template-columns:repeat(3,1fr);margin-top:6px;border-bottom:1px solid var(--line)}
+.view{border:0;background:none;padding:10px 0 9px;font-size:15px;font-weight:700;color:var(--muted);
+  border-bottom:3px solid transparent;margin-bottom:-1px}
+.view.on{color:var(--text);border-bottom-color:var(--accent)}
+.view small{font-weight:600;font-size:12px;opacity:.7;margin-left:4px}
+.where{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;padding:10px 0}
+.seg{border:1px solid var(--line);border-radius:10px;background:none;padding:6px 2px 7px;display:flex;
+  flex-direction:column;align-items:center;gap:1px;font-size:11.5px;font-weight:600;color:var(--muted);line-height:1.2}
+.seg b{font-size:17px;font-weight:800;color:var(--text)}
+.seg.on{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.seg.on b{color:inherit}
 .tabs{display:flex;flex-wrap:wrap;gap:6px;padding:12px 0 10px}
 .tab{flex:0 0 auto;border:1px solid var(--line);background:transparent;border-radius:999px;
   padding:7px 13px;font-size:14px;font-weight:600;color:var(--muted);white-space:nowrap}
@@ -50,10 +62,12 @@ main{padding:14px 16px calc(env(safe-area-inset-bottom) + 96px)}
   -webkit-box-orient:vertical;overflow:hidden}
 .movie .s{font-size:12px;color:var(--muted)}
 .who{position:absolute;top:6px;left:6px;background:var(--accent);color:var(--accent-ink);
-  width:22px;height:22px;border-radius:11px;font-size:12px;font-weight:800;
+  min-width:22px;height:22px;padding:0 5px;border-radius:11px;font-size:11px;font-weight:800;
   display:flex;align-items:center;justify-content:center}
 .logos{position:absolute;right:5px;top:5px;display:flex;flex-direction:column;gap:3px}
 .logos img{width:22px;height:22px;border-radius:5px;display:block}
+.src{width:24px;height:24px;border-radius:6px;background:var(--text);color:var(--bg);font-size:14px;font-weight:800;
+  display:flex;align-items:center;justify-content:center;box-shadow:0 1px 4px rgba(0,0,0,.35)}
 .empty{text-align:center;color:var(--muted);padding:56px 20px}
 .tonight h2{font-size:23px;line-height:1.2;margin:4px 0 4px}
 .lab{font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin:16px 0 7px;font-weight:700}
@@ -62,6 +76,10 @@ main{padding:14px 16px calc(env(safe-area-inset-bottom) + 96px)}
 .chip.on{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
 .row2{display:flex;gap:10px;margin-bottom:18px}
 .row2 .btn{margin-top:12px}
+.alist{border-top:1px solid var(--line)}
+.arow{display:flex;justify-content:space-between;align-items:baseline;gap:14px;width:100%;border:0;
+  border-bottom:1px solid var(--line);background:none;padding:13px 2px;text-align:left;font-size:16px}
+.arow .y{color:var(--muted);font-size:14px;flex:0 0 auto;font-variant-numeric:tabular-nums}
 .grid.one{grid-template-columns:minmax(0,210px);justify-content:center}
 .grid.three{grid-template-columns:repeat(3,minmax(0,1fr))}
 .fab{position:fixed;right:18px;bottom:calc(env(safe-area-inset-bottom) + 20px);z-index:6;border:0;
@@ -156,8 +174,8 @@ const SERVICES = [
   { id:'criterion',   name:'Criterion Channel', match:/criterion/i }
 ];
 const TABS = [
-  { id:'tonight', label:'Tonight' },
-  { id:'all',     label:'All A–Z' },
+  { id:'tonight', label:'Next' },
+  { id:'all',     label:'List' },
   { id:'home',    label:'At home' },
   { id:'stream',  label:'Streaming now' },
   { id:'rent',    label:'Rent or buy' },
@@ -170,6 +188,12 @@ const TIMES = [
   { id:'120',  label:'Under 2 hours', max:120 },
   { id:'long', label:'2 hours or more', min:120 }
 ];
+const SEEN = [
+  { id:'any', label:'Either' },
+  { id:'new', label:'New to us', test: m => !m.rewatch },
+  { id:'re',  label:'Rewatch',   test: m => !!m.rewatch }
+];
+const SRC_LETTER = { Jellyfin:'J', Apple:'A', Disc:'D', Other:'O' };
 const MOODS = [
   { id:'any',      label:'Anything' },
   { id:'classics', label:'Classics', test: m => Number(m.year) >= 1920 && Number(m.year) <= 1969 },
@@ -183,13 +207,21 @@ const DAY = 24 * 60 * 60 * 1000;
 
 const S = {
   user:null, movies:new Map(), config:{}, jf:{ items:{} },
-  tab:'tonight', tabChosen:false, tn:{ time:'any', mood:'any', rent:false, picks:[] }, ready:false, denied:false, open:null, refreshed:false
+  tab:'tonight', tabChosen:false, tn:{ time:'any', mood:'any', seen:'any', rent:false, picks:[] }, ready:false, denied:false, open:null, refreshed:false
 };
 
 const $ = (sel, root=document) => root.querySelector(sel);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const app = $('#app'), dlg = $('#dlg');
 const firstName = u => (u?.displayName || u?.email || 'Someone').split(/[ @]/)[0];
+/* Names people chose in Settings win over the name Google supplied when a movie was added. */
+const nameOf = (uid, fallback) => (S.config.names && S.config.names[uid]) || fallback || 'Someone';
+const myName = () => nameOf(S.user.uid, firstName(S.user));
+function initialOf(name){
+  const others = new Set([...Object.values(S.config.names || {}), ...[...S.movies.values()].map(m => nameOf(m.addedBy?.uid, m.addedBy?.name))]);
+  const clash = [...others].some(n => n && n !== name && n[0].toUpperCase() === name[0].toUpperCase());
+  return clash ? name.slice(0, 2) : name[0].toUpperCase();
+}
 
 function toast(msg){
   document.querySelectorAll('.toast').forEach(t => t.remove());
@@ -303,7 +335,7 @@ async function addMovie(id){
   try {
     const m = await fetchMovie(id);
     await setDoc(doc(db, 'movies', String(id)), {
-      ...m, addedBy: { uid: S.user.uid, name: firstName(S.user) }, addedAt: Date.now(),
+      ...m, addedBy: { uid: S.user.uid, name: myName() }, addedAt: Date.now(),
       watched: false, ratings: {}, format: '', notes: '', why: '', owned: ''
     });
     const cat = classify({ ...m, watched: false });
@@ -320,6 +352,7 @@ function posterTag(m, size = 'w342'){
                   : `<div class="poster noposter">${esc(m.title)}</div>`;
 }
 function cardLogos(m, cat){
+  if (cat === 'home') { const o = owned(m); return `<span class="src" title="${esc(OWNED_LABEL[o] || 'Owned')}">${SRC_LETTER[o] || '•'}</span>`; }
   let items = [];
   if (cat === 'stream') items = subs(m).filter(x => isMine(x.n));
   if (cat === 'rent') { const s = store(m); if (s) items = [{ n: s.name, l: s.logo }]; }
@@ -333,13 +366,15 @@ function whereLabel(m, cat){
   if (cat === 'rent') { const st = store(m); return st ? [st.rent && 'Rent', st.buy && 'Buy'].filter(Boolean).join('/') + ' on ' + st.name : 'Rent or buy'; }
   return cat === 'hunt' ? 'Track down' : 'Watched';
 }
-function tonightPool(){
-  const t = TIMES.find(x => x.id === S.tn.time), mood = MOODS.find(x => x.id === S.tn.mood);
+function tonightPool(over = {}){
+  const f = { ...S.tn, ...over };
+  const t = TIMES.find(x => x.id === f.time), mood = MOODS.find(x => x.id === f.mood), seen = SEEN.find(x => x.id === f.seen);
   return [...S.movies.values()].filter(m => {
     const c = classify(m);
-    if (!(c === 'home' || c === 'stream' || (S.tn.rent && c === 'rent'))) return false;
+    if (!(c === 'home' || c === 'stream' || (f.rent && c === 'rent'))) return false;
     if (t.max && !(m.runtime > 0 && m.runtime <= t.max)) return false;
     if (t.min && !(m.runtime >= t.min)) return false;
+    if (seen.test && !seen.test(m)) return false;
     if (mood.test && !mood.test(m)) return false;
     if (mood.g && !(m.genres || []).some(g => mood.g.includes(g))) return false;
     return true;
@@ -352,20 +387,26 @@ function card(m){
     : m.year + (m.runtime ? ' · ' + m.runtime + ' min' : '');
   return `<button class="movie" data-act="open" data-id="${m.id}">
     ${posterTag(m)}
-    <span class="who" title="Added by ${esc(m.addedBy?.name)}">${esc((m.addedBy?.name || '?')[0].toUpperCase())}</span>
+    <span class="who" title="Added by ${esc(nameOf(m.addedBy?.uid, m.addedBy?.name))}">${esc(initialOf(nameOf(m.addedBy?.uid, m.addedBy?.name)))}</span>
     <span class="logos">${cardLogos(m, cat)}</span>
     <div class="t">${esc(m.title)}</div>
-    <div class="s">${esc(sub)}</div>
+    <div class="s">${esc(sub)}${m.rewatch ? ' · ↻' : ''}</div>
   </button>`;
 }
 function tonightHTML(){
   const pool = tonightPool();
   const picks = S.tn.picks.map(id => S.movies.get(id)).filter(m => m && pool.includes(m));
-  const chips = (k, opts) => `<div class="chips">${opts.map(o => `<button class="chip ${S.tn[k] === o.id ? 'on' : ''}" data-act="tn" data-k="${k}" data-v="${o.id}">${o.label}</button>`).join('')}</div>`;
+  /* Only offer choices that have at least one movie ready to watch, given the other filter. */
+  const chips = (k, opts) => `<div class="chips">${opts.map(o => {
+    const n = o.id === 'any' ? null : tonightPool({ [k]: o.id }).length;
+    if (n === 0 && S.tn[k] !== o.id) return '';
+    return `<button class="chip ${S.tn[k] === o.id ? 'on' : ''}" data-act="tn" data-k="${k}" data-v="${o.id}">${o.label}${n === null ? '' : ` <b style="opacity:.75;margin-left:3px">${n}</b>`}</button>`;
+  }).join('')}</div>`;
   return `<section class="tonight">
-    <h2>What should we watch tonight?</h2>
+    <h2>Showing next</h2>
     <div class="lab">How much time?</div>${chips('time', TIMES)}
     <div class="lab">In the mood for</div>${chips('mood', MOODS)}
+    <div class="lab">Seen it before?</div>${chips('seen', SEEN)}
     <label class="check" style="margin-top:8px"><input type="checkbox" data-act="tnrent" ${S.tn.rent ? 'checked' : ''}>Include movies we'd need to rent or buy</label>
     <div class="meta">${pool.length} ${pool.length === 1 ? 'movie fits' : 'movies fit'}</div>
     ${pool.length ? `<div class="row2">
@@ -405,12 +446,13 @@ function render(){
   }[S.tab];
   app.innerHTML = `
     <header>
-      <div class="top"><h1>Marquee</h1><button class="iconbtn" data-act="settings" aria-label="Settings">⚙︎</button></div>
-      <nav class="tabs">${TABS.map(t => `<button class="tab ${t.id === S.tab ? 'on' : ''}" data-act="tab" data-id="${t.id}">${t.label}${t.id === 'tonight' ? '' : `<b>${groups[t.id].length}</b>`}</button>`).join('')}</nav>
+      <div class="top"><h1>Marquee</h1><button class="iconbtn gear" data-act="settings" aria-label="Settings">⚙︎</button></div>
+      <nav class="views">${[['tonight', 'Next'], ['all', 'List'], ['watched', 'Watched']].map(([id, label]) => `<button class="view ${id === S.tab ? 'on' : ''}" data-act="tab" data-id="${id}">${label}${id === 'tonight' ? '' : `<small>${groups[id].length}</small>`}</button>`).join('')}</nav>
+      <nav class="where">${[['home', 'At home'], ['stream', 'Streaming'], ['rent', 'Rent or buy'], ['hunt', 'Track down']].map(([id, label]) => `<button class="seg ${id === S.tab ? 'on' : ''}" data-act="tab" data-id="${id}"><b>${groups[id].length}</b>${label}</button>`).join('')}</nav>
     </header>
     <main>
       ${!S.config.tmdbKey ? `<div class="block" style="margin:0 0 14px"><h3>One-time setup</h3>Paste your TMDB key in Settings so Marquee can look up movies.<button class="btn primary" data-act="settings">Open Settings</button></div>` : ''}
-      ${S.tab === 'tonight' ? tonightHTML() : list.length ? `<div class="grid">${list.map(card).join('')}</div>` : `<div class="empty">${emptyText}</div>`}
+      ${S.tab === 'tonight' ? tonightHTML() : S.tab === 'all' && list.length ? `<div class="alist">${list.map(m => `<button class="arow" data-act="open" data-id="${m.id}"><span>${esc(m.title)}</span><span class="y">${m.rewatch ? '↻ ' : ''}${esc(m.year)}</span></button>`).join('')}</div>` : list.length ? `<div class="grid">${list.map(card).join('')}</div>` : `<div class="empty">${emptyText}</div>`}
       <footer>Movie details from <a href="https://www.themoviedb.org" target="_blank" rel="noopener">TMDB</a>.
         Streaming availability from <a href="https://www.justwatch.com" target="_blank" rel="noopener">JustWatch</a>.<br>
         This product uses the TMDB API but is not endorsed or certified by TMDB.</footer>
@@ -440,7 +482,7 @@ function renderDetail(id){
   const others = Object.entries(m.ratings || {}).filter(([uid]) => uid !== S.user.uid);
   const elsewhere = subs(m).filter(x => !isMine(x.n)).map(x => x.n);
   dlg.innerHTML = `<div class="sheet">
-    <div class="sheethead"><span class="meta">Added by ${esc(m.addedBy?.name || 'someone')}</span>
+    <div class="sheethead"><span class="meta">Added by ${esc(nameOf(m.addedBy?.uid, m.addedBy?.name))}</span>
       <button class="iconbtn" data-act="close" aria-label="Close">✕</button></div>
     <div class="hero">
       ${m.poster ? `<img alt="" src="${IMG}w342${esc(m.poster)}">` : `<div class="ph"></div>`}
@@ -451,6 +493,9 @@ function renderDetail(id){
     ${m.overview ? `<p class="overview">${esc(m.overview)}</p>` : ''}
     ${jfId && jfUrl ? `<a class="btn primary" target="_blank" rel="noopener" href="${esc(jfUrl)}/web/index.html#!/details?id=${esc(jfId)}">Play in Jellyfin (home wifi)</a>` : ''}
     ${src === 'Apple' && !m.watched ? `<a class="btn primary" target="_blank" rel="noopener" href="https://tv.apple.com/">Open Apple TV</a>` : ''}
+    ${m.watched ? '' : `<div class="row2" style="margin-bottom:0">
+      <button class="btn ${m.rewatch ? '' : 'primary'}" data-act="rewatch" data-v="0">First watch</button>
+      <button class="btn ${m.rewatch ? 'primary' : ''}" data-act="rewatch" data-v="1">↻ Rewatch</button></div>`}
     <div class="block"><h3>Why it's on the list</h3>
       <input class="field" data-change="why" placeholder="Who recommended it, or why you want to see it" value="${esc(m.why || '')}" autocomplete="off"></div>
     <div class="block"><h3>Where to watch</h3>
@@ -472,7 +517,7 @@ function renderDetail(id){
       <p class="hint">Owned movies move to the At home tab.</p></div>`}
     ${m.watched ? `<div class="block"><h3>Ratings</h3>
       <div class="rate"><span>You</span><span class="stars">${[1,2,3,4,5].map(n => `<button class="${n <= mine ? 'on' : ''}" data-act="rate" data-n="${n}" aria-label="${n} stars">★</button>`).join('')}</span></div>
-      ${others.map(([, r]) => `<div class="rate"><span>${esc(r.name)}</span><span style="color:var(--accent)">${'★'.repeat(r.stars)}</span></div>`).join('')}
+      ${others.map(([uid, r]) => `<div class="rate"><span>${esc(nameOf(uid, r.name))}</span><span style="color:var(--accent)">${'★'.repeat(r.stars)}</span></div>`).join('')}
     </div>` : ''}
     <button class="btn ${m.watched ? '' : 'primary'}" data-act="watched">${m.watched ? 'Move back to the list' : 'Mark as watched'}</button>
     <button class="btn" data-act="refresh">Refresh availability</button>
@@ -518,6 +563,9 @@ function renderSettings(){
   dlg.innerHTML = `<div class="sheet">
     <div class="sheethead"><h2>Settings</h2><button class="iconbtn" data-act="close" aria-label="Close">✕</button></div>
     <div class="meta">Signed in as ${esc(S.user.email)}. Settings are shared by everyone on the list.</div>
+    <div class="block"><h3>Your name</h3>
+      <input class="field" id="myname" value="${esc(myName())}" autocomplete="off" maxlength="20">
+      <p class="hint">Shown on movies you add and on your ratings. Each person sets their own.</p></div>
     <div class="block"><h3>My services</h3>
       ${SERVICES.map(s => `<label class="check"><input type="checkbox" data-svc="${s.id}" ${!Array.isArray(on) || on.includes(s.id) ? 'checked' : ''}>${s.name}</label>`).join('')}
     </div>
@@ -566,7 +614,8 @@ document.addEventListener('click', async e => {
     const m = S.movies.get(S.open);
     patch(S.open, m.watched ? { watched: false, watchedAt: deleteField() } : { watched: true, watchedAt: Date.now() });
   }
-  else if (act === 'rate') patch(S.open, { ['ratings.' + S.user.uid]: { name: firstName(S.user), stars: Number(el.dataset.n) } });
+  else if (act === 'rewatch') patch(S.open, { rewatch: el.dataset.v === '1' });
+  else if (act === 'rate') patch(S.open, { ['ratings.' + S.user.uid]: { name: myName(), stars: Number(el.dataset.n) } });
   else if (act === 'refresh') {
     try { await refreshProviders(S.open); toast('Availability updated'); }
     catch (err) { toast(err.message === 'nokey' ? 'Add your TMDB key in Settings first' : err.message); }
@@ -578,7 +627,8 @@ document.addEventListener('click', async e => {
   }
   else if (act === 'savesettings') {
     const services = [...dlg.querySelectorAll('[data-svc]')].filter(c => c.checked).map(c => c.dataset.svc);
-    await saveConfig({ services, tmdbKey: $('#tmdbkey', dlg).value.trim(), jellyfinUrl: $('#jfurl', dlg).value.trim() });
+    const mine = $('#myname', dlg).value.trim() || firstName(S.user);
+    await saveConfig({ services, tmdbKey: $('#tmdbkey', dlg).value.trim(), jellyfinUrl: $('#jfurl', dlg).value.trim(), names: { [S.user.uid]: mine } });
     S.refreshed = false; dlg.close(); toast('Saved');
   }
   else if (act === 'export') {

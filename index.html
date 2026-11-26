@@ -301,9 +301,16 @@ function enabledServices(){
   const on = S.config.services;
   return SERVICES.filter(s => !Array.isArray(on) || on.includes(s.id));
 }
-const baseName = n => String(n || '').replace(/\s+(Amazon|Apple TV|Roku Premium|Roku)\s+Channel\s*$/i, '')
-  .replace(/\s+(Standard|Basic|Essential|Premium)?\s*with Ads\s*$/i, '').trim();
-const svcFor = name => enabledServices().find(sv => sv.match.test(baseName(name)));
+const baseName = n => String(n || '').replace(/\s+(?:on\s+|via\s+)?(?:Amazon|Prime Video|Apple TV|Roku)(?:\s+Premium)?\s+Channels?\s*$/i, '')
+  .replace(/\s+(?:Standard|Basic|Essential|Premium)?\s*with Ads\s*$/i, '').trim();
+/* When a name mentions two services ("HBO Max Apple TV Channel"), the one named first is the
+   service itself and the other is just where it is resold. */
+function svcFor(name){
+  const base = baseName(name);
+  let best = null, at = Infinity;
+  for (const sv of enabledServices()) { const i = base.search(sv.match); if (i >= 0 && i < at) { at = i; best = sv; } }
+  return best;
+}
 const isMine = name => !!svcFor(name);
 function subs(m){
   const p = m.providers || {};
@@ -319,6 +326,9 @@ function streamList(m){
     const key = svc ? 'svc:' + svc.id : norm(baseName(x.n));
     if (!out.has(key)) out.set(key, { n: svc ? svc.name : baseName(x.n), l: x.l, mine: !!svc });
   }
+  /* Hulu's catalogue is part of Disney+ now, so a film on both shows as Disney+ only. */
+  if (out.has('svc:disney')) { out.delete('svc:hulu'); out.delete(norm('Hulu')); }
+  else if ([...out.keys()].some(k => k === norm('Disney Plus') || k === norm('Disney+'))) out.delete(norm('Hulu'));
   return [...out.values()].sort((a, b) => (b.mine ? 1 : 0) - (a.mine ? 1 : 0));
 }
 function store(m){
@@ -573,14 +583,7 @@ function posterTag(m, size = 'w342'){
 function cardLogos(m, cat){
   if (cat === 'home') { const o = owned(m); return `<span class="src" title="${esc(OWNED_LABEL[o] || 'Owned')}">${SRC_LETTER[o] || '•'}</span>`; }
   let items = [];
-  if (cat === 'stream') {
-    const bySvc = new Map();
-    for (const x of subs(m)) {
-      const svc = svcFor(x.n);
-      if (svc && x.l && !bySvc.has(svc.id)) bySvc.set(svc.id, x);
-    }
-    items = [...bySvc.values()];
-  }
+  if (cat === 'stream') items = streamList(m).filter(x => x.mine && x.l);
   if (cat === 'rent') { const s = store(m); if (s) items = [{ n: s.name, l: s.logo }]; }
   const seen = new Set();
   return items.filter(x => x.l && !seen.has(x.l) && seen.add(x.l)).slice(0, 3)
@@ -951,7 +954,7 @@ function renderDetail(id){
   if (!dlg.open) dlg.showModal();
 }
 
-const VERSION = 'Nov 26, 9:50 AM';
+const VERSION = 'Nov 26, 10:00 AM';
 /* GitHub lets browsers keep a copy of this page for about ten minutes, and home screen apps hold on
    even longer. On opening, and whenever the app comes back to the front, ask the server for a fresh
    copy; if it is a newer version, reload once to pick it up. */

@@ -245,7 +245,7 @@ const DAY = 24 * 60 * 60 * 1000;
 
 const S = {
   user:null, movies:new Map(), config:{}, jf:{ items:{} },
-  tab:'tonight', tabChosen:false, sort:null, tn:{ time:'any', mood:'any', seen:'any', rent:false, picks:[] }, ready:false, denied:false, open:null, refreshed:false
+  tab:'tonight', tabChosen:false, sort:null, filt:{ len:'any', genre:'', by:'', open:false }, tn:{ time:'any', mood:'any', seen:'any', rent:false, picks:[] }, ready:false, denied:false, open:null, refreshed:false
 };
 
 const $ = (sel, root=document) => root.querySelector(sel);
@@ -649,10 +649,35 @@ function sortList(list, tab){
   const cur = sortFor(tab), def = SORTS.find(x => x.id === cur.id) || SORTS[0];
   return list.sort((a, b) => def.cmp(a, b) * (cur.flip ? -1 : 1));
 }
-function sortBar(tab){
-  const cur = sortFor(tab);
-  return `<div class="chips sortbar">${SORTS.filter(x => !x.only || x.only === tab).sort((a, b) => (b.only ? 1 : 0) - (a.only ? 1 : 0)).map(x =>
-    `<button class="chip ${cur.id === x.id ? 'on' : ''}" data-act="sort" data-id="${x.id}">${x.labels[cur.id === x.id && cur.flip ? 1 : 0]}</button>`).join('')}</div>`;
+/* Filters for the where-to-watch tabs: length, genre, and who added it. */
+const filtCount = () => (S.filt.len !== 'any' ? 1 : 0) + (S.filt.genre ? 1 : 0) + (S.filt.by ? 1 : 0);
+const lenOk = (m, id) => { const t = TIMES.find(x => x.id === id) || TIMES[0]; return !(t.max && !(m.runtime > 0 && m.runtime <= t.max)) && !(t.min && !(m.runtime >= t.min)); };
+function passFilt(m){
+  if (!lenOk(m, S.filt.len)) return false;
+  if (S.filt.genre && !(m.genres || []).includes(S.filt.genre)) return false;
+  if (S.filt.by && (m.addedBy?.uid || '') !== S.filt.by) return false;
+  return true;
+}
+function sortBar(tab, full, shown){
+  const cur = sortFor(tab), n = filtCount();
+  const sorts = SORTS.filter(x => !x.only || x.only === tab).sort((a, b) => (b.only ? 1 : 0) - (a.only ? 1 : 0)).map(x =>
+    `<button class="chip ${cur.id === x.id ? 'on' : ''}" data-act="sort" data-id="${x.id}">${x.labels[cur.id === x.id && cur.flip ? 1 : 0]}</button>`).join('');
+  let panel = '';
+  if (S.filt.open) {
+    const opt = (k, v, label, count) => `<button class="chip ${S.filt[k] === v ? 'on' : ''}" data-act="filt" data-k="${k}" data-v="${esc(v)}">${esc(label)} · ${count}</button>`;
+    const tally = pick => { const t = new Map(); for (const m of full) for (const key of pick(m)) t.set(key, (t.get(key) || 0) + 1); return [...t].sort((a, b) => b[1] - a[1] || String(a[0]).localeCompare(String(b[0]))); };
+    const lens = TIMES.filter(t => t.id !== 'any').map(t => [t, full.filter(m => lenOk(m, t.id)).length]).filter(x => x[1] || S.filt.len === x[0].id);
+    const genres = tally(m => m.genres || []), people = tally(m => m.addedBy?.uid ? [m.addedBy.uid] : []);
+    const group = (title, chips) => chips ? `<div class="lab" style="margin:12px 0 6px">${title}</div><div class="chips" style="margin:0">${chips}</div>` : '';
+    panel = `<div class="block" style="margin:0 0 12px;padding-top:2px">
+      ${group('Length', lens.map(([t, c]) => opt('len', t.id, t.label, c)).join(''))}
+      ${group('Genre', genres.map(([g, c]) => opt('genre', g, g, c)).join(''))}
+      ${people.length > 1 || S.filt.by ? group('Added by', people.map(([uid, c]) => opt('by', uid, nameOf(uid, full.find(m => m.addedBy?.uid === uid)?.addedBy?.name), c)).join('')) : ''}
+      ${n ? `<button class="btn" data-act="filtclear">Clear filters</button>` : ''}
+    </div>`;
+  }
+  return `<div class="chips sortbar">${sorts}<button class="chip ${n ? 'on' : ''}" data-act="filtopen" aria-expanded="${S.filt.open}">Filter${n ? ' · ' + n : ''}</button></div>
+    ${panel}${n ? `<p class="hint" style="margin:0 0 10px">Showing ${shown.length} of ${full.length}.</p>` : ''}`;
 }
 function render(){
   if (!S.user) {
@@ -674,7 +699,8 @@ function render(){
   for (const [tab, g] of Object.entries(groups)) { if (SORTABLE.includes(tab)) sortList(g, tab); else g.sort((a, b) => (b.addedAt || 0) - (a.addedAt || 0)); }
   groups.watched.sort((a, b) => (b.watchedAt || 0) - (a.watchedAt || 0));
   groups.all = [...S.movies.values()].filter(m => !m.watched).sort((a, b) => norm(a.title).localeCompare(norm(b.title)));
-  const list = groups[S.tab];
+  const full = groups[S.tab], sortable = SORTABLE.includes(S.tab);
+  const list = sortable ? full.filter(passFilt) : full;
   const emptyText = {
     home: 'Nothing on your list is in Jellyfin or your Apple library yet.',
     stream: 'Nothing on your list is streaming on your services right now.',
@@ -692,7 +718,7 @@ function render(){
     </header>
     <main>
       ${!S.config.tmdbKey ? `<div class="block" style="margin:0 0 14px"><h3>One-time setup</h3>Paste your TMDB key in Settings so Marquee can look up movies.<button class="btn primary" data-act="settings">Open Settings</button></div>` : ''}
-      ${S.tab === 'tonight' ? tonightHTML() : S.tab === 'all' && list.length ? `<div class="alist">${list.map(m => `<button class="arow" data-act="open" data-id="${m.id}"><span>${esc(m.title)}</span><span class="y">${m.rewatch ? '↻ ' : ''}${esc(m.year)}</span></button>`).join('')}</div>` : list.length ? `${SORTABLE.includes(S.tab) && list.length > 1 ? sortBar(S.tab) : ''}<div class="grid">${list.map(card).join('')}</div>` : `<div class="empty">${emptyText}</div>`}
+      ${S.tab === 'tonight' ? tonightHTML() : S.tab === 'all' && list.length ? `<div class="alist">${list.map(m => `<button class="arow" data-act="open" data-id="${m.id}"><span>${esc(m.title)}</span><span class="y">${m.rewatch ? '↻ ' : ''}${esc(m.year)}</span></button>`).join('')}</div>` : sortable && full.length ? `${full.length > 1 || filtCount() ? sortBar(S.tab, full, list) : ''}${list.length ? `<div class="grid">${list.map(card).join('')}</div>` : `<div class="empty">Nothing in this tab matches your filters.</div>`}` : list.length ? `<div class="grid">${list.map(card).join('')}</div>` : `<div class="empty">${emptyText}</div>`}
       <footer>Movie details from <a href="https://www.themoviedb.org" target="_blank" rel="noopener">TMDB</a>.
         Streaming availability from <a href="https://www.justwatch.com" target="_blank" rel="noopener">JustWatch</a>.<br>
         This product uses the TMDB API but is not endorsed or certified by TMDB.</footer>
@@ -781,7 +807,7 @@ function renderDetail(id){
   if (!dlg.open) dlg.showModal();
 }
 
-const VERSION = 'Nov 25, 10:45 PM';
+const VERSION = 'Nov 25, 10:55 PM';
 /* GitHub lets browsers keep a copy of this page for about ten minutes, and home screen apps hold on
    even longer. On opening, and whenever the app comes back to the front, ask the server for a fresh
    copy; if it is a newer version, reload once to pick it up. */
@@ -1000,6 +1026,12 @@ document.addEventListener('click', async e => {
   else if (act === 'open') renderDetail(id);
   else if (act === 'add') renderAdd();
   else if (act === 'searchagain') S.searchRun?.();
+  else if (act === 'filtopen') { S.filt.open = !S.filt.open; render(); }
+  else if (act === 'filtclear') { S.filt = { len:'any', genre:'', by:'', open: S.filt.open }; render(); }
+  else if (act === 'filt') {
+    const k = el.dataset.k, v = el.dataset.v, off = k === 'len' ? 'any' : '';
+    S.filt[k] = S.filt[k] === v ? off : v; render();
+  }
   else if (act === 'sort') {
     const cur = sortFor(S.tab);
     if (cur.id === id) cur.flip = !cur.flip; else { cur.id = id; cur.flip = false; }

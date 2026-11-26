@@ -137,6 +137,7 @@ html.lock,html.lock body{overflow:hidden}
   color:var(--accent-ink);font-size:13px;font-weight:700}
 .overview{font-size:14px;margin:14px 0;color:var(--text)}
 .credits{font-size:14px;margin:14px 0 0;line-height:1.5}
+.plink{border:0;background:none;padding:6px 0;font:inherit;font-weight:600;color:var(--text);text-decoration:underline;text-decoration-color:var(--accent);text-underline-offset:3px}
 .credits b{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin-right:4px}
 .block{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:12px 14px;margin-top:12px}
 .block h3{margin:0 0 8px;font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
@@ -354,9 +355,10 @@ function pickRelease(d){
   return { theatrical: first([3, 2]) || first([1]), digital: first([4]), physical: first([5]), primary: d?.release_date || '' };
 }
 function pickCredits(d){
-  const cast = (d?.credits?.cast || []).slice().sort((a, b) => (a.order ?? 99) - (b.order ?? 99)).slice(0, 3).map(c => c.name).filter(Boolean);
-  const director = (d?.credits?.crew || []).filter(c => c.job === 'Director').map(c => c.name).slice(0, 2).join(', ');
-  return { cast, director };
+  const top = (d?.credits?.cast || []).filter(c => c.name).sort((a, b) => (a.order ?? 99) - (b.order ?? 99)).slice(0, 3);
+  const dirs = (d?.credits?.crew || []).filter(c => c.job === 'Director' && c.name).slice(0, 2);
+  return { cast: top.map(c => c.name), castIds: top.map(c => c.id || 0),
+           director: dirs.map(c => c.name).join(', '), directorIds: dirs.map(c => c.id || 0) };
 }
 function pickProviders(d){
   const us = d?.['watch/providers']?.results?.US || {};
@@ -379,7 +381,7 @@ async function refreshStale(){
   if (S.refreshed || !S.config.tmdbKey || !S.movies.size) return;
   S.refreshed = true;
   for (const m of [...S.movies.values()]) {
-    if ((m.watched && m.cast) || (m.rel && m.cast && (m.providers?.at || 0) > Date.now() - DAY)) continue;
+    if ((m.watched && m.castIds) || (m.rel && m.castIds && (m.providers?.at || 0) > Date.now() - DAY)) continue;
     try { await refreshProviders(m.id); } catch (e) { break; }
     await new Promise(r => setTimeout(r, 300));
   }
@@ -586,7 +588,7 @@ function renderDetail(id){
         <span class="badge">${esc(badge)}</span>
         ${cat !== 'home' && cat !== 'watched' && inJellyfin(m) ? `<div class="meta" style="margin-top:6px">Also at home in Jellyfin</div>` : ''}</div>
     </div>
-    ${(m.cast || []).length || m.director ? `<p class="credits">${(m.cast || []).length ? `<b>Starring</b> ${esc(m.cast.join(', '))}` : ''}${(m.cast || []).length && m.director ? '<br>' : ''}${m.director ? `<b>Directed by</b> ${esc(m.director)}` : ''}</p>` : ''}
+    ${(m.cast || []).length || m.director ? `<p class="credits">${(m.cast || []).length ? `<b>Starring</b> ${m.cast.map((n, i) => personLink(n, m.castIds?.[i], m.id)).join(', ')}` : ''}${(m.cast || []).length && m.director ? '<br>' : ''}${m.director ? `<b>Directed by</b> ${m.director.split(', ').map((n, i) => personLink(n, m.directorIds?.[i], m.id)).join(', ')}` : ''}</p>` : ''}
     ${m.overview ? `<p class="overview">${esc(m.overview)}</p>` : ''}
     ${jfId && jfUrl ? `<a class="btn primary" target="_blank" rel="noopener" href="${esc(jfUrl)}/web/index.html#!/details?id=${esc(jfId)}">Play in Jellyfin (home wifi)</a>` : ''}
     ${src === 'Apple' && !m.watched ? `<a class="btn primary" target="_blank" rel="noopener" href="https://tv.apple.com/">Open Apple TV</a>` : ''}
@@ -629,7 +631,7 @@ function renderDetail(id){
   if (!dlg.open) dlg.showModal();
 }
 
-const VERSION = 'Nov 25, 6:00 PM';
+const VERSION = 'Nov 25, 6:10 PM';
 /* GitHub lets browsers keep a copy of this page for about ten minutes, and home screen apps hold on
    even longer. On opening, and whenever the app comes back to the front, ask the server for a fresh
    copy; if it is a newer version, reload once to pick it up. */
@@ -746,6 +748,39 @@ function renderAdd(){
   });
 }
 
+const personLink = (name, pid, from) => `<button class="plink" data-act="person" data-pid="${pid || ''}" data-name="${esc(name)}" data-from="${from}">${esc(name)}</button>`;
+/* A person's other films, with a tap to add any of them to the list. */
+async function renderPerson(pid, name, from){
+  S.open = null; dlg.classList.remove('top');
+  const head = `<div class="sheethead"><button class="btn" style="width:auto;margin:0;padding:10px 14px" data-act="open" data-id="${esc(from)}">‹ Back</button>
+    <button class="iconbtn" data-act="close" aria-label="Close">✕</button></div><h2 style="margin:0 0 4px">${esc(name)}</h2>`;
+  dlg.innerHTML = `<div class="sheet">${head}<div class="empty">Loading films…</div></div>`;
+  if (!dlg.open) dlg.showModal();
+  dlg.scrollTop = 0;
+  try {
+    if (!pid) {
+      const found = await tmdb('/search/person', { query: name });
+      pid = found.results?.[0]?.id;
+      if (!pid) throw new Error('Could not find ' + name + '.');
+    }
+    const d = await tmdb('/person/' + pid + '/movie_credits');
+    const uniq = list => [...new Map(list.map(x => [x.id, x])).values()];
+    const byYear = (a, b) => (b.release_date || '').localeCompare(a.release_date || '');
+    const directed = uniq((d.crew || []).filter(c => c.job === 'Director')).sort(byYear);
+    const acted = uniq(d.cast || []).sort((a, b) => (b.vote_count || 0) - (a.vote_count || 0)).slice(0, 40).sort(byYear);
+    const row = (x, note) => `<button class="result" data-act="pick" data-id="${x.id}">
+      ${x.poster_path ? `<img alt="" src="${IMG}w92${esc(x.poster_path)}">` : `<div class="ph"></div>`}
+      <div><div style="font-weight:600">${esc(x.title)} <span class="meta">${esc((x.release_date || '').slice(0, 4))}</span></div>
+        ${note ? `<div class="meta">${esc(note)}</div>` : ''}
+        ${String(x.id) === String(from) ? `<div class="on">The movie you were viewing</div>` : S.movies.has(String(x.id)) ? `<div class="on">On your list</div>` : ''}</div>
+    </button>`;
+    const section = (title, list, note) => list.length ? `<div class="lab" style="font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);font-weight:700;margin:16px 0 4px">${title} · ${list.length}</div>${list.map(x => row(x, note(x))).join('')}` : '';
+    const body = section('Directed', directed, () => '') + section(directed.length ? 'Appeared in' : 'Films', acted, x => x.character ? 'as ' + x.character : '');
+    dlg.innerHTML = `<div class="sheet">${head}<p class="hint" style="margin:0">Tap a film to add it to your list.</p>${body || '<div class="empty">No films found.</div>'}</div>`;
+  } catch (e) {
+    dlg.innerHTML = `<div class="sheet">${head}<div class="empty">${e.message === 'nokey' ? 'Add your TMDB key in Settings first.' : esc(e.message)}</div></div>`;
+  }
+}
 function renderSettings(){
   S.open = null; dlg.classList.remove('top');
   const on = S.config.services;
@@ -795,6 +830,7 @@ document.addEventListener('click', async e => {
     const from = shuffled(fresh.length >= Math.min(n, pool.length) ? fresh : pool);
     S.tn.picks = from.slice(0, n); render();
   }
+  else if (act === 'person') renderPerson(Number(el.dataset.pid) || 0, el.dataset.name, el.dataset.from);
   else if (act === 'open') renderDetail(id);
   else if (act === 'add') renderAdd();
   else if (act === 'settings') renderSettings();

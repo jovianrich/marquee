@@ -899,8 +899,12 @@ function renderDetail(id){
     ${m.watched ? '' : `<div class="row2" style="margin-bottom:0">
       <button class="btn ${m.rewatch ? '' : 'primary'}" data-act="rewatch" data-v="0">First watch</button>
       <button class="btn ${m.rewatch ? 'primary' : ''}" data-act="rewatch" data-v="1">↻ Rewatch</button></div>`}
-    <div class="block"><h3>Why it's on the list</h3>
-      <input class="field" data-change="why" placeholder="Who recommended it, or why you want to see it" value="${esc(m.why || '')}" autocomplete="off"></div>
+    ${m.watched ? `<div class="block"><h3>Ratings</h3>
+      <div class="rate"><span>You${mine % 1 ? ` <span class="meta">${mine} from Letterboxd</span>` : ''}</span><span class="stars">${[1,2,3,4,5].map(n => `<button class="${n <= mine ? 'on' : ''}" data-act="rate" data-n="${n}" aria-label="${n} stars">★</button>`).join('')}</span></div>
+      ${others.map(([uid, r]) => `<div class="rate"><span>${esc(nameOf(uid, r.name))}</span><span style="color:var(--accent)">${starText(Number(r.stars) || 0)}</span></div>`).join('')}
+    </div>` : ''}
+    <div class="block"><h3>Recommended by</h3>
+      <input class="field" data-change="why" placeholder="Who recommended it" value="${esc(m.why || '')}" autocomplete="off"></div>
     <div class="block"><h3>Viewing options</h3>
       ${provRow('Stream', streamList(m))}${provRow('Rent', p.rent || [])}${provRow('Buy', p.buy || [])}
       ${p.link ? `<a class="btn" target="_blank" rel="noopener" href="${esc(p.link)}">See all options</a>` : ''}
@@ -924,10 +928,6 @@ function renderDetail(id){
         ${[['', 'Not marked as owned'], ['Apple', 'Yes, on Apple'], ['Disc', 'Yes, on disc'], ['Other', 'Yes, somewhere else']].map(([v, t]) => `<option value="${v}" ${(m.owned || '') === v ? 'selected' : ''}>${t}</option>`).join('')}
       </select>
       <p class="hint">Owned movies move to the Libraries tab.</p></div>`}
-    ${m.watched ? `<div class="block"><h3>Ratings</h3>
-      <div class="rate"><span>You${mine % 1 ? ` <span class="meta">${mine} from Letterboxd</span>` : ''}</span><span class="stars">${[1,2,3,4,5].map(n => `<button class="${n <= mine ? 'on' : ''}" data-act="rate" data-n="${n}" aria-label="${n} stars">★</button>`).join('')}</span></div>
-      ${others.map(([uid, r]) => `<div class="rate"><span>${esc(nameOf(uid, r.name))}</span><span style="color:var(--accent)">${starText(Number(r.stars) || 0)}</span></div>`).join('')}
-    </div>` : ''}
     <button class="btn ${m.watched ? '' : 'primary'}" data-act="watched">${m.watched ? 'Move back to the list' : 'Mark as watched'}</button>
     <button class="btn" data-act="refresh">Refresh availability</button>
     <button class="btn danger" data-act="remove">Remove from list</button>
@@ -937,7 +937,7 @@ function renderDetail(id){
   if (!dlg.open) dlg.showModal();
 }
 
-const VERSION = 'Nov 26, 1:00 AM';
+const VERSION = 'Nov 26, 9:25 AM';
 /* GitHub lets browsers keep a copy of this page for about ten minutes, and home screen apps hold on
    even longer. On opening, and whenever the app comes back to the front, ask the server for a fresh
    copy; if it is a newer version, reload once to pick it up. */

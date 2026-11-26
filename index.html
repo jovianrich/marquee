@@ -110,6 +110,10 @@ dialog{border:0;padding:0;background:var(--bg);color:var(--text);width:100%;max-
   max-height:92dvh;border-radius:18px 18px 0 0;margin:auto auto 0;overflow:auto}
 dialog::backdrop{background:rgba(0,0,0,.55)}
 @media (min-width:600px){dialog{border-radius:18px;margin:auto}}
+dialog.top{margin:0 auto auto;border-radius:0 0 18px 18px;height:100dvh;max-height:100dvh}
+dialog.top .sheet{padding-top:0}
+.stick{position:sticky;top:0;z-index:2;background:var(--bg);padding:calc(env(safe-area-inset-top) + 12px) 0 10px}
+.stick .sheethead{margin-bottom:10px}
 .sheet{padding:16px 16px calc(env(safe-area-inset-bottom) + 22px)}
 .sheethead{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;gap:10px}
 .sheethead h2{margin:0;font-size:19px}
@@ -285,10 +289,13 @@ function buildApple(){
   }
 }
 /* Where a copy already lives: 'Jellyfin', 'Apple', a manual choice, or '' */
+/* Apps come before Jellyfin, since they usually have the better picture and sound. */
+const inJellyfin = m => !!(S.jf.items && S.jf.items[String(m.id)]);
 function owned(m){
-  if (S.jf.items && S.jf.items[String(m.id)]) return 'Jellyfin';
   const years = appleIdx.get(norm(m.title)), y = Number(m.year) || 0;
   if (years && years.some(a => !a || !y || Math.abs(a - y) <= 1)) return 'Apple';
+  if (m.owned === 'Apple') return 'Apple';
+  if (inJellyfin(m)) return 'Jellyfin';
   return m.owned || '';
 }
 const OWNED_LABEL = { Jellyfin: 'At home in Jellyfin', Apple: 'In your Apple library', Disc: 'Owned on disc', Other: 'Owned' };
@@ -308,8 +315,10 @@ function soonInfo(m){
 }
 function classify(m){
   if (m.watched) return 'watched';
-  if (owned(m)) return 'home';
+  const have = owned(m);
+  if (have === 'Apple') return 'home';
   if (subs(m).some(x => isMine(x.n))) return 'stream';
+  if (have) return 'home';
   if (store(m)) return 'rent';
   if (m.wait === 'soon') return 'soon';
   if (m.wait === 'hunt') return 'hunt';
@@ -546,7 +555,7 @@ function provRow(label, items){
 function renderDetail(id){
   const m = S.movies.get(String(id));
   if (!m) { dlg.close(); return; }
-  S.open = String(id);
+  S.open = String(id); dlg.classList.remove('top');
   const cat = classify(m), p = m.providers || {}, st = store(m), src = owned(m);
   const badge = {
     home: OWNED_LABEL[src] || 'Owned', stream: 'Streaming on your services',
@@ -565,7 +574,8 @@ function renderDetail(id){
       ${m.poster ? `<img alt="" src="${IMG}w342${esc(m.poster)}">` : `<div class="ph"></div>`}
       <div><h2>${esc(m.title)}</h2>
         <div class="meta">${esc([m.year, m.runtime ? m.runtime + ' min' : '', (m.genres || []).slice(0, 3).join(', ')].filter(Boolean).join(' · '))}</div>
-        <span class="badge">${esc(badge)}</span></div>
+        <span class="badge">${esc(badge)}</span>
+        ${cat !== 'home' && cat !== 'watched' && inJellyfin(m) ? `<div class="meta" style="margin-top:6px">Also at home in Jellyfin</div>` : ''}</div>
     </div>
     ${(m.cast || []).length || m.director ? `<p class="credits">${(m.cast || []).length ? `<b>Starring</b> ${esc(m.cast.join(', '))}` : ''}${(m.cast || []).length && m.director ? '<br>' : ''}${m.director ? `<b>Directed by</b> ${esc(m.director)}` : ''}</p>` : ''}
     ${m.overview ? `<p class="overview">${esc(m.overview)}</p>` : ''}
@@ -612,11 +622,14 @@ function renderDetail(id){
 
 function renderAdd(){
   S.open = null;
+  dlg.classList.add('top');
   dlg.innerHTML = `<div class="sheet">
-    <div class="sheethead"><h2>Add a movie</h2><button class="iconbtn" data-act="close" aria-label="Close">✕</button></div>
-    <input class="field" id="q" type="search" placeholder="Search by title" autocomplete="off" enterkeyhint="search">
-    <div id="results" style="margin-top:8px"></div></div>`;
-  dlg.showModal();
+    <div class="stick">
+      <div class="sheethead"><h2>Add a movie</h2><button class="iconbtn" data-act="close" aria-label="Close">✕</button></div>
+      <input class="field" id="q" type="search" placeholder="Search by title" autocomplete="off" autocorrect="off" enterkeyhint="search">
+    </div>
+    <div id="results"></div></div>`;
+  dlg.showModal(); dlg.scrollTop = 0;
   const q = $('#q', dlg); q.focus();
   let timer, seq = 0;
   q.addEventListener('input', () => {
@@ -642,7 +655,7 @@ function renderAdd(){
 }
 
 function renderSettings(){
-  S.open = null;
+  S.open = null; dlg.classList.remove('top');
   const on = S.config.services;
   dlg.innerHTML = `<div class="sheet">
     <div class="sheethead"><h2>Settings</h2><button class="iconbtn" data-act="close" aria-label="Close">✕</button></div>
@@ -726,7 +739,7 @@ dlg.addEventListener('change', e => {
   if (key && S.open) patch(S.open, { [key]: e.target.value });
 });
 dlg.addEventListener('click', e => { if (e.target === dlg) { S.open = null; dlg.close(); } });
-dlg.addEventListener('close', () => { S.open = null; });
+dlg.addEventListener('close', () => { S.open = null; dlg.classList.remove('top'); });
 
 let listening = false;
 onAuthStateChanged(auth, user => {

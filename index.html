@@ -74,6 +74,11 @@ main{padding:14px 16px calc(env(safe-area-inset-bottom) + 100px)}
   display:flex;align-items:center;justify-content:center}
 .logos{position:absolute;right:5px;top:5px;display:flex;flex-direction:column;gap:3px}
 .logos img{width:22px;height:22px;border-radius:5px;display:block}
+.clock{position:absolute;left:6px;top:34px;width:22px;height:22px;border-radius:11px;background:var(--danger);color:#fff;display:flex;align-items:center;justify-content:center;box-shadow:0 1px 4px rgba(0,0,0,.35)}
+@media (prefers-color-scheme: dark){.clock{color:#2a0806}}
+.chip svg{vertical-align:-2px;margin-right:3px}
+.stubclock{margin-top:4px;display:flex}
+.leaving{display:flex;align-items:center;gap:6px;margin-top:8px;font-size:14px;font-weight:700;color:var(--danger)}
 .src{width:24px;height:24px;border-radius:6px;background:var(--text);color:var(--bg);font-size:14px;font-weight:800;
   display:flex;align-items:center;justify-content:center;box-shadow:0 1px 4px rgba(0,0,0,.35)}
 .empty{text-align:center;color:var(--muted);padding:56px 20px}
@@ -250,7 +255,7 @@ const DAY = 24 * 60 * 60 * 1000;
 
 const S = {
   user:null, movies:new Map(), config:{}, jf:{ items:{} },
-  tab:'tonight', tabChosen:false, sort:null, filt:{ len:'any', genre:'', by:'', open:false }, tn:{ time:'any', mood:'any', seen:'any', rent:false, picks:[] }, ready:false, denied:false, open:null, refreshed:false
+  tab:'tonight', tabChosen:false, sort:null, filt:{ len:'any', genre:'', by:'', leaving:'', open:false }, tn:{ time:'any', mood:'any', seen:'any', rent:false, leaving:false, picks:[] }, ready:false, denied:false, open:null, refreshed:false
 };
 
 const $ = (sel, root=document) => root.querySelector(sel);
@@ -401,22 +406,23 @@ async function fetchMovie(id){
   return {
     id: d.id, title: d.title || '', year: (d.release_date || '').slice(0, 4), poster: d.poster_path || '',
     runtime: d.runtime || 0, genres: (d.genres || []).map(g => g.name), overview: d.overview || '',
-    providers: pickProviders(d), rel: pickRelease(d), ...pickCredits(d)
+    providers: pickProviders(d), rel: pickRelease(d), imdb: d.imdb_id || '', ...pickCredits(d)
   };
 }
 async function refreshProviders(id){
   const d = await tmdb('/movie/' + id, { append_to_response: 'watch/providers,release_dates,credits' });
-  await updateDoc(doc(db, 'movies', String(id)), { providers: pickProviders(d), rel: pickRelease(d), ...pickCredits(d) });
+  await updateDoc(doc(db, 'movies', String(id)), { providers: pickProviders(d), rel: pickRelease(d), imdb: d.imdb_id || '', ...pickCredits(d) });
 }
 async function refreshStale(){
   if (S.refreshed || !S.config.tmdbKey || !S.movies.size) return;
   S.refreshed = true;
   for (const m of [...S.movies.values()]) {
-    if ((m.watched && m.castIds) || (m.rel && m.castIds && (m.providers?.at || 0) > Date.now() - DAY)) continue;
+    if ((m.watched && m.castIds) || (m.rel && m.castIds && m.imdb !== undefined && (m.providers?.at || 0) > Date.now() - DAY)) continue;
     while (dlg.open && dlg.classList.contains('top')) await new Promise(r => setTimeout(r, 1000));
     try { await refreshProviders(m.id); } catch (e) { break; }
     await new Promise(r => setTimeout(r, 300));
   }
+  leavingPass();
 }
 
 /* ---------- data ---------- */
@@ -426,7 +432,7 @@ function listen(){
     S.movies = new Map(snap.docs.map(d => [d.id, d.data()]));
     S.ready = true; render(); refreshStale(); applyLetterboxd();
   }, fail);
-  onSnapshot(doc(db, 'config', 'app'), d => { S.config = d.data() || {}; render(); refreshStale(); applyLetterboxd(); }, fail);
+  onSnapshot(doc(db, 'config', 'app'), d => { S.config = d.data() || {}; render(); refreshStale(); applyLetterboxd(); leavingPass(); }, fail);
   onSnapshot(doc(db, 'jellyfin', 'library'), d => { S.jf = d.data() || { items:{} }; buildApple(); render(); applyLetterboxd(); }, () => {});
 }
 /* Letterboxd, automatic half: the Mac helper posts each followed member's recent diary entries.
@@ -561,6 +567,54 @@ function cardLogos(m, cat){
   return items.filter(x => x.l && !seen.has(x.l) && seen.add(x.l)).slice(0, 3)
     .map(x => `<img alt="${esc(x.n)}" src="${IMG}w92${esc(x.l)}">`).join('');
 }
+/* Leaving soon. TMDB does not say when a film is leaving a service, so this comes from a second
+   source (the Streaming Availability API) using a key entered in Settings. Lookups are rationed:
+   at most 25 a day across both phones, and each streaming film is rechecked every five days. */
+const CLOCK = `<svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>`;
+const LEAVING_DAILY = 25;
+const fmtTs = ts => new Date(ts).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+function pickLeaving(d){
+  const out = { at: Date.now(), soon: false, on: 0, svc: '' };
+  const opts = (d?.streamingOptions?.us || []).filter(o => ['subscription', 'free'].includes(o.type) && svcFor(o.service?.name || ''));
+  const going = o => !!o.expiresSoon || (o.expiresOn && o.expiresOn * 1000 < Date.now() + 31 * DAY);
+  if (!opts.length || !opts.every(going)) return out;          // staying on at least one of your services
+  const last = opts.slice().sort((a, b) => (b.expiresOn || 0) - (a.expiresOn || 0))[0];
+  return { at: Date.now(), soon: true, on: opts.every(o => o.expiresOn) ? last.expiresOn * 1000 : 0, svc: svcFor(last.service.name).name };
+}
+function leavingInfo(m){
+  const L = m.leaving;
+  if (!L || !L.soon || (L.at || 0) < Date.now() - 14 * DAY || (L.on && L.on < Date.now())) return null;
+  if (classify(m) !== 'stream') return null;
+  return { label: L.on ? `Leaves ${L.svc} ${fmtTs(L.on)}` : `Leaving ${L.svc} soon`, on: L.on || 0 };
+}
+let leavingBusy = false;
+async function leavingPass(){
+  const key = (S.config.leavingKey || '').trim();
+  if (!key || leavingBusy || !S.ready || !S.user) return;
+  leavingBusy = true;
+  try {
+    const today = todayStr(), use = S.config.leavingUse?.day === today ? (S.config.leavingUse.n || 0) : 0;
+    let left = LEAVING_DAILY - use, used = 0;
+    const due = [...S.movies.values()].filter(m => !m.watched && classify(m) === 'stream' && (m.leaving?.at || 0) < Date.now() - 5 * DAY)
+      .sort((a, b) => (a.leaving?.at || 0) - (b.leaving?.at || 0));
+    for (const m of due) {
+      if (left <= 0) break;
+      left--; used++;
+      const r = await fetch('https://streaming-availability.p.rapidapi.com/shows/' + (m.imdb || 'movie/' + m.id) + '?country=us',
+        { headers: { 'X-RapidAPI-Key': key, 'X-RapidAPI-Host': 'streaming-availability.p.rapidapi.com' } });
+      if (r.status === 404) { await updateDoc(doc(db, 'movies', String(m.id)), { leaving: { at: Date.now(), soon: false, on: 0, svc: '' } }); continue; }
+      if (!r.ok) {
+        S.leavingNote = r.status === 401 || r.status === 403 ? 'The key was not accepted. Check that you subscribed to the free plan.'
+          : r.status === 429 ? 'Reached the service\'s limit for now. It will carry on tomorrow.' : 'Lookup failed (' + r.status + ').';
+        if (r.status === 429) used = LEAVING_DAILY;
+        break;
+      }
+      S.leavingNote = '';
+      await updateDoc(doc(db, 'movies', String(m.id)), { leaving: pickLeaving(await r.json()) });
+    }
+    if (used) await saveConfig({ leavingUse: { day: today, n: Math.min(LEAVING_DAILY, use + used) } });
+  } catch (e) { S.leavingNote = 'Could not reach the leaving-soon service.'; } finally { leavingBusy = false; }
+}
 function whereLabel(m, cat){
   if (cat === 'home') return OWNED_LABEL[owned(m)] || 'Owned';
   if (cat === 'stream') { const mine = streamList(m).filter(x => x.mine); return mine.length ? 'On ' + mine.slice(0, 2).map(x => x.n).join(', ') : 'Streaming'; }
@@ -576,6 +630,7 @@ function tonightPool(over = {}){
     if (!(c === 'home' || c === 'stream' || (f.rent && c === 'rent'))) return false;
     if (t.max && !(m.runtime > 0 && m.runtime <= t.max)) return false;
     if (t.min && !(m.runtime >= t.min)) return false;
+    if (f.leaving && !leavingInfo(m)) return false;
     if (seen.test && !seen.test(m)) return false;
     if (mood.test && !mood.test(m)) return false;
     if (mood.g && !(m.genres || []).some(g => mood.g.includes(g))) return false;
@@ -591,6 +646,7 @@ function card(m){
     ${posterTag(m)}
     <span class="who" title="Added by ${esc(nameOf(m.addedBy?.uid, m.addedBy?.name))}">${esc(initialOf(nameOf(m.addedBy?.uid, m.addedBy?.name)))}</span>
     <span class="logos">${cardLogos(m, cat)}</span>
+    ${leavingInfo(m) ? `<span class="clock" title="${esc(leavingInfo(m).label)}">${CLOCK}</span>` : ''}
     <div class="t">${esc(m.title)}</div>
     <div class="s">${esc(sub)}${m.rewatch ? ' · ↻' : ''}</div>
   </button>`;
@@ -602,9 +658,9 @@ function shuffled(list){
 }
 function stubRow(m){
   const cat = classify(m);
-  const bits = [m.year, whereLabel(m, cat), m.rewatch ? 'Rewatch' : 'Added by ' + nameOf(m.addedBy?.uid, m.addedBy?.name)].filter(Boolean);
+  const bits = [m.year, leavingInfo(m)?.label || whereLabel(m, cat), m.rewatch ? 'Rewatch' : 'Added by ' + nameOf(m.addedBy?.uid, m.addedBy?.name)].filter(Boolean);
   return `<button class="stubrow" data-act="open" data-id="${m.id}">
-    <span class="stub"><b>${m.runtime || '?'}</b><i>MIN</i></span>
+    <span class="stub"><b>${m.runtime || '?'}</b><i>MIN</i>${leavingInfo(m) ? `<span class="stubclock" title="Leaving soon">${CLOCK}</span>` : ''}</span>
     <span class="stubbody"><span class="st">${esc(m.title)}</span>${(m.cast || []).length ? `<span class="sc">${esc(m.cast.slice(0, 2).join(', '))}</span>` : ''}<span class="sm">${esc(bits.join(' · '))}</span></span>
   </button>`;
 }
@@ -613,7 +669,8 @@ function tonightHTML(){
   S.tn.picks = S.tn.picks.filter(id => ids.includes(id));
   if (!S.tn.picks.length && ids.length) S.tn.picks = shuffled(ids).slice(0, 3);
   const picks = S.tn.picks.map(id => S.movies.get(id)).filter(Boolean);
-  const none = S.tn.time === 'any' && S.tn.mood === 'any' && S.tn.seen === 'any' && !S.tn.rent;
+  const none = S.tn.time === 'any' && S.tn.mood === 'any' && S.tn.seen === 'any' && !S.tn.rent && !S.tn.leaving;
+  const going = tonightPool({ leaving: true }).length;
   /* Only offer choices that have at least one movie ready to watch, given the other filters. */
   const group = (k, opts) => opts.filter(o => o.id !== 'any').map(o => {
     const n = tonightPool({ [k]: o.id }).length;
@@ -628,6 +685,7 @@ function tonightHTML(){
     </div>
     <div class="chips">
       <button class="chip ${none ? 'on' : ''}" data-act="tnclear">Anything</button>
+      ${going || S.tn.leaving ? `<button class="chip ${S.tn.leaving ? 'on' : ''}" data-act="tnleaving">${CLOCK} Leaving soon · ${going}</button>` : ''}
       ${group('time', TIMES)}${group('mood', MOODS)}${group('seen', SEEN)}
       ${extra > 0 || S.tn.rent ? `<button class="chip ${S.tn.rent ? 'on' : ''}" data-act="tnrent">Rent or buy${S.tn.rent ? '' : ' · ' + extra}</button>` : ''}
     </div>
@@ -655,12 +713,13 @@ function sortList(list, tab){
   return list.sort((a, b) => def.cmp(a, b) * (cur.flip ? -1 : 1));
 }
 /* Filters for the where-to-watch tabs: length, genre, and who added it. */
-const filtCount = () => (S.filt.len !== 'any' ? 1 : 0) + (S.filt.genre ? 1 : 0) + (S.filt.by ? 1 : 0);
+const filtCount = () => (S.filt.len !== 'any' ? 1 : 0) + (S.filt.genre ? 1 : 0) + (S.filt.by ? 1 : 0) + (S.filt.leaving ? 1 : 0);
 const lenOk = (m, id) => { const t = TIMES.find(x => x.id === id) || TIMES[0]; return !(t.max && !(m.runtime > 0 && m.runtime <= t.max)) && !(t.min && !(m.runtime >= t.min)); };
 function passFilt(m){
   if (!lenOk(m, S.filt.len)) return false;
   if (S.filt.genre && !(m.genres || []).includes(S.filt.genre)) return false;
   if (S.filt.by && (m.addedBy?.uid || '') !== S.filt.by) return false;
+  if (S.filt.leaving && !leavingInfo(m)) return false;
   return true;
 }
 function sortBar(tab, full, shown){
@@ -677,7 +736,9 @@ function sortBar(tab, full, shown){
     /* Long genre lists start with the six most common; the chosen one is always kept in view. */
     const few = S.filt.more ? genres : genres.filter(([g], i) => i < 6 || g === S.filt.genre);
     const moreBtn = genres.length > few.length ? `<button class="chip" data-act="filtmore">${genres.length - few.length} more…</button>` : S.filt.more && genres.length > 6 ? `<button class="chip" data-act="filtmore">Fewer</button>` : '';
+    const goingN = full.filter(m => leavingInfo(m)).length;
     panel = `<div class="block filtpanel">
+      ${goingN || S.filt.leaving ? group('Availability', `<button class="chip ${S.filt.leaving ? 'on' : ''}" data-act="filt" data-k="leaving" data-v="1">${CLOCK} Leaving soon · ${goingN}</button>`) : ''}
       ${group('Length', lens.map(([t, c]) => opt('len', t.id, t.label, c)).join(''))}
       ${group('Genre', few.map(([g, c]) => opt('genre', g, g, c)).join('') + moreBtn)}
       ${people.length || S.filt.by ? group('Added by', people.map(([uid, c]) => opt('by', uid, nameOf(uid, full.find(m => m.addedBy?.uid === uid)?.addedBy?.name), c)).join('')) : ''}
@@ -770,6 +831,7 @@ function renderDetail(id){
       <div><h2>${esc(m.title)}</h2>
         <div class="meta">${esc([m.year, m.runtime ? m.runtime + ' min' : '', (m.genres || []).slice(0, 3).join(', ')].filter(Boolean).join(' · '))}</div>
         <span class="badge">${esc(badge)}</span>
+        ${leavingInfo(m) ? `<div class="leaving">${CLOCK}${esc(leavingInfo(m).label)}</div>` : ''}
         ${also.length && cat !== 'watched' ? `<div class="meta" style="margin-top:6px">Also ${esc(also.join(', and '))}</div>` : ''}</div>
     </div>
     ${(m.cast || []).length || m.director ? `<p class="credits">${(m.cast || []).length ? `<b>Starring</b> ${m.cast.map((n, i) => personLink(n, m.castIds?.[i], m.id)).join(', ')}` : ''}${(m.cast || []).length && m.director ? '<br>' : ''}${m.director ? `<b>Directed by</b> ${m.director.split(', ').map((n, i) => personLink(n, m.directorIds?.[i], m.id)).join(', ')}` : ''}</p>` : ''}
@@ -815,7 +877,7 @@ function renderDetail(id){
   if (!dlg.open) dlg.showModal();
 }
 
-const VERSION = 'Nov 25, 11:10 PM';
+const VERSION = 'Nov 25, 11:40 PM';
 /* GitHub lets browsers keep a copy of this page for about ten minutes, and home screen apps hold on
    even longer. On opening, and whenever the app comes back to the front, ask the server for a fresh
    copy; if it is a newer version, reload once to pick it up. */
@@ -993,6 +1055,9 @@ function renderSettings(){
       <p class="hint">${S.jf.letterboxdUpdatedAt ? 'Feed last read ' + new Date(S.jf.letterboxdUpdatedAt).toLocaleString() + '.' : 'Films you log there are marked watched here, with your rating, once the Mac helper follows this username.'}</p>
       <label class="btn" style="cursor:pointer">Import a Letterboxd file<input type="file" id="lbfile" accept=".csv,text/csv,text/comma-separated-values" hidden></label>
       <div id="lbstatus" class="hint">Use the watchlist export to add films, or the ratings or diary export to fill in your ratings.</div></div>
+    <div class="block"><h3>Leaving soon</h3>
+      <input class="field" id="leavekey" placeholder="Streaming Availability key (RapidAPI)" value="${esc(S.config.leavingKey || '')}" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false">
+      <p class="hint">${S.config.leavingKey ? (() => { const st = [...S.movies.values()].filter(m => !m.watched && classify(m) === 'stream'); return `${st.filter(m => m.leaving?.at).length} of ${st.length} streaming films checked so far, ${st.filter(m => leavingInfo(m)).length} leaving soon. Up to ${LEAVING_DAILY} are checked per day.`; })() : 'Adds a clock to films about to leave your services. Needs a free key from the Streaming Availability service on RapidAPI.'} ${esc(S.leavingNote || '')}</p></div>
     <div class="block"><h3>TMDB key</h3>
       <input class="field" id="tmdbkey" placeholder="API Key or API Read Access Token" value="${esc(S.config.tmdbKey || '')}" autocomplete="off" autocapitalize="off" spellcheck="false">
       <p class="hint">From themoviedb.org → Settings → API. Either value works.</p></div>
@@ -1023,7 +1088,8 @@ document.addEventListener('click', async e => {
   else if (act === 'tab') { S.tab = id; S.tabChosen = true; render(); window.scrollTo(0, 0); }
   else if (act === 'tn') { const k = el.dataset.k; S.tn[k] = S.tn[k] === el.dataset.v ? 'any' : el.dataset.v; S.tn.picks = []; render(); }
   else if (act === 'tnrent') { S.tn.rent = !S.tn.rent; S.tn.picks = []; render(); }
-  else if (act === 'tnclear') { S.tn = { time:'any', mood:'any', seen:'any', rent:false, picks:[] }; render(); }
+  else if (act === 'tnclear') { S.tn = { time:'any', mood:'any', seen:'any', rent:false, leaving:false, picks:[] }; render(); }
+  else if (act === 'tnleaving') { S.tn.leaving = !S.tn.leaving; S.tn.picks = []; render(); }
   else if (act === 'roll') {
     const n = Number(el.dataset.n), pool = tonightPool().map(m => String(m.id));
     const fresh = pool.filter(x => !S.tn.picks.includes(x));
@@ -1036,7 +1102,7 @@ document.addEventListener('click', async e => {
   else if (act === 'searchagain') S.searchRun?.();
   else if (act === 'filtopen') { S.filt.open = !S.filt.open; render(); }
   else if (act === 'filtmore') { S.filt.more = !S.filt.more; render(); }
-  else if (act === 'filtclear') { S.filt = { len:'any', genre:'', by:'', open: S.filt.open, more: S.filt.more }; render(); }
+  else if (act === 'filtclear') { S.filt = { len:'any', genre:'', by:'', leaving:'', open: S.filt.open, more: S.filt.more }; render(); }
   else if (act === 'filt') {
     const k = el.dataset.k, v = el.dataset.v, off = k === 'len' ? 'any' : '';
     S.filt[k] = S.filt[k] === v ? off : v; render();
@@ -1088,6 +1154,7 @@ document.addEventListener('click', async e => {
     const services = [...dlg.querySelectorAll('[data-svc]')].filter(c => c.checked).map(c => c.dataset.svc);
     const mine = $('#myname', dlg).value.trim() || firstName(S.user);
     await saveConfig({ services, tmdbKey: $('#tmdbkey', dlg).value.trim(), jellyfinUrl: $('#jfurl', dlg).value.trim(), names: { [S.user.uid]: mine },
+      leavingKey: $('#leavekey', dlg).value.trim(),
       letterboxd: { [S.user.uid]: $('#lbuser', dlg).value.trim().replace(/^@/, '').toLowerCase() } });
     S.refreshed = false; dlg.close(); toast('Saved');
   }

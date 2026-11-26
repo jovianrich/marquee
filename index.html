@@ -587,6 +587,12 @@ function leavingInfo(m){
   if (classify(m) !== 'stream') return null;
   return { label: L.on ? `Leaves ${L.svc} ${fmtTs(L.on)}` : `Leaving ${L.svc} soon`, on: L.on || 0 };
 }
+/* Accepts the bare key, or a whole pasted snippet from RapidAPI that contains it. */
+function tidyKey(text){
+  const t = String(text || '');
+  const m = t.match(/x-(?:rapid)?api-key["'\s:=,]+([A-Za-z0-9]{24,})/i);
+  return m ? m[1] : t.replace(/\s+/g, '').length > 80 ? ((t.replace(/\s+/g, '').match(/[A-Za-z0-9]{40,60}/) || [''])[0]) : t.trim();
+}
 let leavingBusy = false;
 async function leavingPass(){
   const key = (S.config.leavingKey || '').trim();
@@ -887,7 +893,7 @@ function renderDetail(id){
   if (!dlg.open) dlg.showModal();
 }
 
-const VERSION = 'Nov 25, 11:55 PM';
+const VERSION = 'Nov 25, 11:59 PM';
 /* GitHub lets browsers keep a copy of this page for about ten minutes, and home screen apps hold on
    even longer. On opening, and whenever the app comes back to the front, ask the server for a fresh
    copy; if it is a newer version, reload once to pick it up. */
@@ -1066,7 +1072,7 @@ function renderSettings(){
       <label class="btn" style="cursor:pointer">Import a Letterboxd file<input type="file" id="lbfile" accept=".csv,text/csv,text/comma-separated-values" hidden></label>
       <div id="lbstatus" class="hint">Use the watchlist export to add films, or the ratings or diary export to fill in your ratings.</div></div>
     <div class="block"><h3>Leaving soon</h3>
-      <input class="field" id="leavekey" placeholder="Streaming Availability key (RapidAPI)" value="${esc(S.config.leavingKey || '')}" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false">
+      <input class="field" id="leavekey" placeholder="Paste the key, or the whole copied snippet" value="${esc(S.config.leavingKey || '')}" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false">
       <p class="hint">${S.config.leavingKey ? (() => { const st = [...S.movies.values()].filter(m => !m.watched && classify(m) === 'stream'); return `${st.filter(m => m.leaving?.at).length} of ${st.length} streaming films checked so far, ${st.filter(m => leavingInfo(m)).length} leaving soon. Up to ${LEAVING_DAILY} are checked per day.`; })() : 'Adds a clock to films about to leave your services. Needs a free key from the Streaming Availability service on RapidAPI.'} ${esc(S.leavingNote || '')}</p></div>
     <div class="block"><h3>TMDB key</h3>
       <input class="field" id="tmdbkey" placeholder="API Key or API Read Access Token" value="${esc(S.config.tmdbKey || '')}" autocomplete="off" autocapitalize="off" spellcheck="false">
@@ -1164,7 +1170,7 @@ document.addEventListener('click', async e => {
     const services = [...dlg.querySelectorAll('[data-svc]')].filter(c => c.checked).map(c => c.dataset.svc);
     const mine = $('#myname', dlg).value.trim() || firstName(S.user);
     await saveConfig({ services, tmdbKey: $('#tmdbkey', dlg).value.trim(), jellyfinUrl: $('#jfurl', dlg).value.trim(), names: { [S.user.uid]: mine },
-      leavingKey: $('#leavekey', dlg).value.trim(),
+      leavingKey: tidyKey($('#leavekey', dlg).value),
       letterboxd: { [S.user.uid]: $('#lbuser', dlg).value.trim().replace(/^@/, '').toLowerCase() } });
     S.refreshed = false; dlg.close(); toast('Saved');
   }

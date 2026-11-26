@@ -41,9 +41,9 @@ h1{margin:0;font-size:26px;letter-spacing:.14em;text-transform:uppercase;font-we
   border-bottom:3px solid transparent;margin-bottom:-1px}
 .view.on{color:var(--text);border-bottom-color:var(--accent)}
 .view small{font-weight:600;font-size:12px;opacity:.7;margin-left:4px}
-.where{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;padding:10px 0}
+.where{display:grid;grid-template-columns:repeat(5,1fr);gap:5px;padding:10px 0}
 .seg{border:1px solid var(--line);border-radius:10px;background:none;padding:6px 2px 7px;display:flex;
-  flex-direction:column;align-items:center;gap:1px;font-size:11.5px;font-weight:600;color:var(--muted);line-height:1.2}
+  flex-direction:column;align-items:center;justify-content:center;gap:1px;font-size:11px;font-weight:600;color:var(--muted);line-height:1.15;text-align:center}
 .seg b{font-size:17px;font-weight:800;color:var(--text)}
 .seg.on{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
 .seg.on b{color:inherit}
@@ -179,6 +179,7 @@ const TABS = [
   { id:'home',    label:'At home' },
   { id:'stream',  label:'Streaming now' },
   { id:'rent',    label:'Rent or buy' },
+  { id:'soon',    label:'Coming soon' },
   { id:'hunt',    label:'Track down' },
   { id:'watched', label:'Watched' }
 ];
@@ -270,12 +271,28 @@ function owned(m){
   return m.owned || '';
 }
 const OWNED_LABEL = { Jellyfin: 'At home in Jellyfin', Apple: 'In your Apple library', Disc: 'Owned on disc', Other: 'Owned' };
+const todayStr = () => { const d = new Date(); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); };
+const daysSince = iso => iso ? Math.floor((Date.parse(todayStr()) - Date.parse(iso)) / DAY) : NaN;
+const fmtDate = iso => { const [y, mo, da] = iso.split('-').map(Number); return new Date(y, mo - 1, da).toLocaleDateString(undefined, { month: 'short', day: 'numeric', ...(y !== new Date().getFullYear() ? { year: 'numeric' } : {}) }); };
+/* A movie with nowhere to watch it yet counts as "coming soon" when it has a release
+   date ahead of it, or reached US theaters within the last six months. */
+function soonInfo(m){
+  const r = m.rel || {}, today = todayStr(), opened = r.theatrical || r.primary;
+  if (r.digital && r.digital > today) return { label: 'Digital ' + fmtDate(r.digital), date: r.digital };
+  if (opened && opened > today) return { label: 'In theaters ' + fmtDate(opened), date: opened };
+  const age = daysSince(opened);
+  if (age >= 0 && age <= 45) return { label: 'In theaters now', date: today };
+  if (age > 45 && age <= 180) return { label: 'Not streaming yet', date: today };
+  return null;
+}
 function classify(m){
   if (m.watched) return 'watched';
   if (owned(m)) return 'home';
   if (subs(m).some(x => isMine(x.n))) return 'stream';
   if (store(m)) return 'rent';
-  return 'hunt';
+  if (m.wait === 'soon') return 'soon';
+  if (m.wait === 'hunt') return 'hunt';
+  return soonInfo(m) ? 'soon' : 'hunt';
 }
 
 /* ---------- TMDB ---------- */
@@ -292,29 +309,33 @@ async function tmdb(path, params = {}){
   return r.json();
 }
 const slim = list => (list || []).map(x => ({ n: x.provider_name, l: x.logo_path || '' }));
+function pickRelease(d){
+  const us = (d?.release_dates?.results || []).find(r => r.iso_3166_1 === 'US');
+  const first = types => (us?.release_dates || []).filter(r => types.includes(r.type)).map(r => (r.release_date || '').slice(0, 10)).filter(Boolean).sort()[0] || '';
+  return { theatrical: first([3, 2]) || first([1]), digital: first([4]), physical: first([5]), primary: d?.release_date || '' };
+}
 function pickProviders(d){
   const us = d?.['watch/providers']?.results?.US || {};
   return { link: us.link || '', flatrate: slim(us.flatrate), free: slim(us.free), ads: slim(us.ads),
            rent: slim(us.rent), buy: slim(us.buy), at: Date.now() };
 }
 async function fetchMovie(id){
-  const d = await tmdb('/movie/' + id, { append_to_response: 'watch/providers' });
+  const d = await tmdb('/movie/' + id, { append_to_response: 'watch/providers,release_dates' });
   return {
     id: d.id, title: d.title || '', year: (d.release_date || '').slice(0, 4), poster: d.poster_path || '',
     runtime: d.runtime || 0, genres: (d.genres || []).map(g => g.name), overview: d.overview || '',
-    providers: pickProviders(d)
+    providers: pickProviders(d), rel: pickRelease(d)
   };
 }
 async function refreshProviders(id){
-  const d = await tmdb('/movie/' + id + '/watch/providers');
-  const providers = pickProviders({ 'watch/providers': d });
-  await updateDoc(doc(db, 'movies', String(id)), { providers });
+  const d = await tmdb('/movie/' + id, { append_to_response: 'watch/providers,release_dates' });
+  await updateDoc(doc(db, 'movies', String(id)), { providers: pickProviders(d), rel: pickRelease(d) });
 }
 async function refreshStale(){
   if (S.refreshed || !S.config.tmdbKey || !S.movies.size) return;
   S.refreshed = true;
   for (const m of [...S.movies.values()]) {
-    if (m.watched || (m.providers?.at || 0) > Date.now() - DAY) continue;
+    if (m.watched || (m.rel && (m.providers?.at || 0) > Date.now() - DAY)) continue;
     try { await refreshProviders(m.id); } catch (e) { break; }
     await new Promise(r => setTimeout(r, 300));
   }
@@ -336,7 +357,7 @@ async function addMovie(id){
     const m = await fetchMovie(id);
     await setDoc(doc(db, 'movies', String(id)), {
       ...m, addedBy: { uid: S.user.uid, name: myName() }, addedAt: Date.now(),
-      watched: false, ratings: {}, format: '', notes: '', why: '', owned: ''
+      watched: false, ratings: {}, format: '', notes: '', why: '', owned: '', wait: ''
     });
     const cat = classify({ ...m, watched: false });
     S.tab = cat; S.tabChosen = true; render(); window.scrollTo(0, 0); renderDetail(String(id));
@@ -371,6 +392,7 @@ function whereLabel(m, cat){
   if (cat === 'home') return OWNED_LABEL[owned(m)] || 'Owned';
   if (cat === 'stream') { const hit = subs(m).find(x => isMine(x.n)); return hit ? 'On ' + hit.n : 'Streaming'; }
   if (cat === 'rent') { const st = store(m); return st ? [st.rent && 'Rent', st.buy && 'Buy'].filter(Boolean).join('/') + ' on ' + st.name : 'Rent or buy'; }
+  if (cat === 'soon') return soonInfo(m)?.label || 'Coming soon';
   return cat === 'hunt' ? 'Track down' : 'Watched';
 }
 function tonightPool(over = {}){
@@ -389,7 +411,7 @@ function tonightPool(over = {}){
 }
 function card(m){
   const cat = classify(m);
-  const sub = (S.tab === 'all' || S.tab === 'tonight') ? whereLabel(m, cat)
+  const sub = (S.tab === 'all' || S.tab === 'tonight' || S.tab === 'soon') ? whereLabel(m, cat)
     : S.tab === 'home' ? m.year + ' · ' + owned(m)
     : m.year + (m.runtime ? ' · ' + m.runtime + ' min' : '');
   return `<button class="movie" data-act="open" data-id="${m.id}">
@@ -440,6 +462,7 @@ function render(){
   const groups = Object.fromEntries(TABS.map(t => [t.id, []]));
   for (const m of S.movies.values()) groups[classify(m)].push(m);
   for (const g of Object.values(groups)) g.sort((a, b) => (b.addedAt || 0) - (a.addedAt || 0));
+  groups.soon.sort((a, b) => (soonInfo(a)?.date || '9').localeCompare(soonInfo(b)?.date || '9'));
   groups.watched.sort((a, b) => (b.watchedAt || 0) - (a.watchedAt || 0));
   groups.all = [...S.movies.values()].filter(m => !m.watched).sort((a, b) => norm(a.title).localeCompare(norm(b.title)));
   const list = groups[S.tab];
@@ -447,6 +470,7 @@ function render(){
     home: 'Nothing on your list is in Jellyfin or your Apple library yet.',
     stream: 'Nothing on your list is streaming on your services right now.',
     rent: 'Nothing to rent or buy right now.',
+    soon: 'Nothing on your list is waiting on a release.',
     hunt: 'Nothing to track down. Everything is available somewhere.',
     watched: 'No movies marked as watched yet.',
     all: 'Your list is empty. Tap + Add movie to start.'
@@ -455,7 +479,7 @@ function render(){
     <header>
       <div class="top"><h1>Marquee</h1><button class="iconbtn gear" data-act="settings" aria-label="Settings">⚙︎</button></div>
       <nav class="views">${[['tonight', 'Next'], ['all', 'List'], ['watched', 'Watched']].map(([id, label]) => `<button class="view ${id === S.tab ? 'on' : ''}" data-act="tab" data-id="${id}">${label}${id === 'tonight' ? '' : `<small>${groups[id].length}</small>`}</button>`).join('')}</nav>
-      <nav class="where">${[['home', 'At home'], ['stream', 'Streaming'], ['rent', 'Rent or buy'], ['hunt', 'Track down']].map(([id, label]) => `<button class="seg ${id === S.tab ? 'on' : ''}" data-act="tab" data-id="${id}"><b>${groups[id].length}</b>${label}</button>`).join('')}</nav>
+      <nav class="where">${[['home', 'At home'], ['stream', 'Streaming'], ['rent', 'Rent or buy'], ['soon', 'Coming soon'], ['hunt', 'Track down']].map(([id, label]) => `<button class="seg ${id === S.tab ? 'on' : ''}" data-act="tab" data-id="${id}"><b>${groups[id].length}</b>${label}</button>`).join('')}</nav>
     </header>
     <main>
       ${!S.config.tmdbKey ? `<div class="block" style="margin:0 0 14px"><h3>One-time setup</h3>Paste your TMDB key in Settings so Marquee can look up movies.<button class="btn primary" data-act="settings">Open Settings</button></div>` : ''}
@@ -482,6 +506,7 @@ function renderDetail(id){
   const badge = {
     home: OWNED_LABEL[src] || 'Owned', stream: 'Streaming on your services',
     rent: st ? `${[st.rent && 'Rent', st.buy && 'Buy'].filter(Boolean).join(' or ')} on ${st.name}` : 'Rent or buy',
+    soon: 'Coming soon' + (soonInfo(m) ? ' · ' + soonInfo(m).label : ''),
     hunt: 'Track down a copy', watched: 'Watched'
   }[cat];
   const jfId = S.jf.items?.[String(m.id)], jfUrl = (S.config.jellyfinUrl || '').replace(/\/+$/, '');
@@ -510,6 +535,12 @@ function renderDetail(id){
       ${p.link ? `<a class="btn" target="_blank" rel="noopener" href="${esc(p.link)}">See all options</a>` : ''}
       <p class="hint">Availability from JustWatch, US. ${p.at ? 'Checked ' + new Date(p.at).toLocaleDateString() + '.' : ''}</p>
     </div>
+    ${cat === 'soon' || cat === 'hunt' ? `<div class="block"><h3>Not available yet</h3>
+      <select class="field" data-change="wait" style="margin-top:0">
+        ${[['', 'Decide automatically from release dates'], ['soon', 'Coming soon: wait for it'], ['hunt', 'Track down: find a copy']].map(([v, t]) => `<option value="${v}" ${(m.wait || '') === v ? 'selected' : ''}>${t}</option>`).join('')}
+      </select>
+      ${[['In US theaters', m.rel?.theatrical], ['Digital release', m.rel?.digital], ['Disc release', m.rel?.physical]].filter(x => x[1]).map(([k, v]) => `<p class="hint">${k}: ${esc(fmtDate(v))}</p>`).join('')}
+      <p class="hint">It moves to Streaming or Rent or buy on its own once it shows up there.</p></div>` : ''}
     ${cat === 'hunt' ? `<div class="block"><h3>Physical media hunt</h3>
       ${elsewhere.length ? `<p class="hint" style="margin:0 0 8px">Streaming only on: ${esc(elsewhere.join(', '))}</p>` : ''}
       <select class="field" data-change="format" style="margin-top:0">

@@ -267,7 +267,8 @@ const MOODS = [
   { id:'light',    label:'Light', test: m => { const g = m.genres || []; return g.some(x => ['Comedy','Family','Animation'].includes(x)) && !g.some(x => ['Horror','Thriller','War','Crime','Mystery'].includes(x)); } },
   { id:'tense',    label:'Tense', g:['Thriller','Horror','Crime','Mystery'] },
   { id:'epic',     label:'Big adventure', g:['Adventure','Action','Science Fiction','Fantasy','War','Western'] },
-  { id:'serious',  label:'Serious', test: m => { const g = m.genres || []; return g.some(x => ['Drama','History','Documentary','War'].includes(x)) && !g.some(x => ['Comedy','Family','Animation'].includes(x)); } }
+  { id:'docs',     label:'Docs', g:['Documentary'] },
+  { id:'serious',  label:'Serious', test: m => { const g = m.genres || []; return g.some(x => ['Drama','History','War'].includes(x)) && !g.some(x => ['Comedy','Family','Animation'].includes(x)); } }
 ];
 const IMG = 'https://image.tmdb.org/t/p/';
 const DAY = 24 * 60 * 60 * 1000;
@@ -694,6 +695,18 @@ function shuffled(list){
   for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; }
   return a;
 }
+/* Picks are spread across where films came from (each person's own additions, and Letterboxd
+   imports), taking one from each source in turn, so one large source cannot crowd out the rest. */
+const sourceOf = m => (m.source === 'letterboxd' || m.why === 'From my Letterboxd watchlist') ? 'letterboxd' : 'by:' + (m.addedBy?.uid || '');
+function diversePick(ids, n){
+  const groups = new Map();
+  for (const id of shuffled(ids)) { const m = S.movies.get(id); if (!m) continue; const k = sourceOf(m); if (!groups.has(k)) groups.set(k, []); groups.get(k).push(id); }
+  const order = shuffled([...groups.keys()]), out = [];
+  while (out.length < n && order.some(k => groups.get(k).length)) {
+    for (const k of order) { if (out.length >= n) break; const g = groups.get(k); if (g.length) out.push(g.pop()); }
+  }
+  return out;
+}
 function stubRow(m){
   const cat = classify(m);
   const bits = [m.year, leavingInfo(m)?.label || whereLabel(m, cat), m.rewatch ? 'Rewatch' : 'Added by ' + nameOf(m.addedBy?.uid, m.addedBy?.name)].filter(Boolean);
@@ -705,7 +718,7 @@ function stubRow(m){
 function tonightHTML(){
   const pool = tonightPool(), ids = pool.map(m => String(m.id));
   S.tn.picks = S.tn.picks.filter(id => ids.includes(id));
-  if (!S.tn.picks.length && ids.length) S.tn.picks = shuffled(ids).slice(0, 3);
+  if (!S.tn.picks.length && ids.length) S.tn.picks = diversePick(ids, 3);
   const picks = S.tn.picks.map(id => S.movies.get(id)).filter(Boolean);
   const none = S.tn.time === 'any' && S.tn.mood === 'any' && S.tn.seen === 'any' && !S.tn.rent && !S.tn.leaving;
   const going = tonightPool({ leaving: true }).length;
@@ -954,7 +967,7 @@ function renderDetail(id){
   if (!dlg.open) dlg.showModal();
 }
 
-const VERSION = 'Nov 26, 10:00 AM';
+const VERSION = 'Nov 26, 10:10 AM';
 /* GitHub lets browsers keep a copy of this page for about ten minutes, and home screen apps hold on
    even longer. On opening, and whenever the app comes back to the front, ask the server for a fresh
    copy; if it is a newer version, reload once to pick it up. */
@@ -1171,7 +1184,7 @@ document.addEventListener('click', async e => {
     const n = Number(el.dataset.n), pool = tonightPool().map(m => String(m.id));
     const fresh = pool.filter(x => !S.tn.picks.includes(x));
     const from = shuffled(fresh.length >= Math.min(n, pool.length) ? fresh : pool);
-    S.tn.picks = from.slice(0, n); render();
+    S.tn.picks = diversePick(from, n); render();
   }
   else if (act === 'person') renderPerson(Number(el.dataset.pid) || 0, el.dataset.name, el.dataset.from);
   else if (act === 'open') renderDetail(id);

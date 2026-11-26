@@ -150,11 +150,14 @@ html.lock,html.lock body{overflow:hidden}
 .badge{display:inline-block;margin-top:10px;padding:5px 10px;border-radius:999px;background:var(--accent);
   color:var(--accent-ink);font-size:13px;font-weight:700}
 .overview{font-size:14px;margin:14px 0;color:var(--text)}
-.topchoice{display:flex;align-items:center;gap:12px;margin-top:14px;padding:10px 12px;border:2px solid var(--accent);border-radius:8px;background:var(--card)}
-.topchoice img{width:44px;height:44px;border-radius:10px;flex:none}
-.tcx{flex:1;min-width:0}
-.tcn{font-size:17px;font-weight:700;line-height:1.2}
-.topchoice .tcbtn{display:inline-block;width:auto;margin:0;padding:11px 18px;flex:none}
+.avail{display:flex;align-items:center;gap:8px;width:fit-content;max-width:100%;margin-top:10px;padding:6px 10px 6px 6px;
+  border:1.5px solid var(--accent);border-radius:8px;background:var(--card);color:var(--text);text-decoration:none}
+.avail img{width:30px;height:30px;border-radius:7px;flex:none}
+.avx{display:flex;flex-direction:column;min-width:0;line-height:1.2}
+.avx .lab{font-size:9.5px}
+.avn{font-size:14px;font-weight:700}
+.avm{font-size:12px;color:var(--muted)}
+.avgo{font-size:12px;font-weight:700;color:var(--accent);margin-top:1px}
 .credits{font-size:14px;margin:14px 0 0;line-height:1.5}
 .plink{border:0;background:none;padding:6px 0;font:inherit;font-weight:600;color:var(--text);text-decoration:underline;text-decoration-color:var(--accent);text-underline-offset:3px}
 .credits b{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin-right:4px}
@@ -844,24 +847,27 @@ function renderDetail(id){
   if (inJellyfin(m) && src !== 'Jellyfin') also.push('at home in Jellyfin');
   if (inJellyfin(m) && src === 'Jellyfin' && cat === 'stream') also.push('at home in Jellyfin');
   /* The single best way to watch, shown first so there is no need to scroll for it. */
-  const letter = ch => `<span class="src" style="width:44px;height:44px;font-size:22px;border-radius:10px">${ch}</span>`;
-  const act = (href, text) => `<a class="btn primary tcbtn" target="_blank" rel="noopener" href="${esc(href)}">${text}</a>`;
+  const letter = ch => `<span class="src" style="width:30px;height:30px;font-size:16px;border-radius:7px;flex:none;box-shadow:none">${ch}</span>`;
+  const act = (href, text) => ({ href, text });
   const jfLink = jfId && jfUrl ? `${jfUrl}/web/index.html#!/details?id=${jfId}` : '';
   let tc = null;
   if (!m.watched) {
     const mineList = streamList(m).filter(x => x.mine);
-    if (cat === 'home' && src === 'Apple') tc = { icon: letter('A'), name: 'Your Apple library', note: 'You own this', btn: act('https://tv.apple.com/', 'Open') };
-    else if (cat === 'home' && src === 'Jellyfin') tc = { icon: letter('J'), name: 'Jellyfin', note: 'At home, on home wifi', btn: jfLink ? act(jfLink, 'Play') : '' };
-    else if (cat === 'home') tc = { icon: letter(SRC_LETTER[src] || '•'), name: OWNED_LABEL[src] || 'Your own copy', note: 'You own this', btn: '' };
+    if (cat === 'home' && src === 'Apple') tc = { icon: letter('A'), name: 'Apple library', note: '', btn: act('https://tv.apple.com/', 'Open') };
+    else if (cat === 'home' && src === 'Jellyfin') tc = { icon: letter('J'), name: 'Jellyfin', note: 'Home wifi', btn: jfLink ? act(jfLink, 'Play') : '' };
+    else if (cat === 'home') tc = { icon: letter(SRC_LETTER[src] || '•'), name: ({ Disc: 'Disc you own', Other: 'Your own copy' })[src] || 'Your own copy', note: '', btn: '' };
     else if (cat === 'stream' && mineList.length) {
       const first = mineList[0], link = m.leaving?.links?.[first.n];
       tc = { icon: first.l ? `<img alt="" src="${IMG}w92${esc(first.l)}">` : letter(first.n[0]), name: first.n,
-             note: leavingInfo(m)?.label || (mineList.length > 1 ? 'Also on ' + mineList.slice(1).map(x => x.n).join(', ') : 'Included with your subscription'), btn: link ? act(link, 'Open') : '' };
+             note: leavingInfo(m)?.label || (mineList.length > 1 ? 'Also ' + mineList.slice(1).map(x => x.n).join(', ') : ''), btn: link ? act(link, 'Open') : '' };
     }
     else if (cat === 'rent' && st) tc = { icon: st.logo ? `<img alt="" src="${IMG}w92${esc(st.logo)}">` : letter(st.name[0]), name: st.name, note: [st.rent && 'Rent', st.buy && 'Buy'].filter(Boolean).join(' or '), btn: '' };
   }
-  const top = (tc ? `<div class="topchoice">${tc.icon}<div class="tcx"><div class="lab">Best way to watch</div><div class="tcn">${esc(tc.name)}</div><div class="meta">${esc(tc.note)}</div></div>${tc.btn}</div>` : '')
-    + (jfLink && !(cat === 'home' && src === 'Jellyfin') ? `<a class="btn" target="_blank" rel="noopener" href="${esc(jfLink)}">Play in Jellyfin (home wifi)</a>` : '');
+  /* Small "Available on" box beside the poster; the whole box is a link when a direct link is known. */
+  const availBody = tc ? `${tc.icon}<span class="avx"><span class="lab">Available on</span><span class="avn">${esc(tc.name)}</span>${tc.note ? `<span class="avm">${esc(tc.note)}</span>` : ''}${tc.btn ? `<span class="avgo">${tc.btn.text} ›</span>` : ''}</span>` : '';
+  const avail = !tc ? `<span class="badge">${esc(badge)}</span>`
+    : tc.btn ? `<a class="avail" target="_blank" rel="noopener" href="${esc(tc.btn.href)}">${availBody}</a>` : `<div class="avail">${availBody}</div>`;
+  const top = jfLink && !(cat === 'home' && src === 'Jellyfin') ? `<a class="btn" target="_blank" rel="noopener" href="${esc(jfLink)}">Play in Jellyfin (home wifi)</a>` : '';
   const mine = m.ratings?.[S.user.uid]?.stars || 0;
   const others = Object.entries(m.ratings || {}).filter(([uid]) => uid !== S.user.uid);
   const elsewhere = streamList(m).filter(x => !x.mine).map(x => x.n);
@@ -872,8 +878,8 @@ function renderDetail(id){
       ${m.poster ? `<img alt="" src="${IMG}w342${esc(m.poster)}">` : `<div class="ph"></div>`}
       <div><h2>${esc(m.title)}</h2>
         <div class="meta">${esc([m.year, m.runtime ? m.runtime + ' min' : '', (m.genres || []).slice(0, 3).join(', ')].filter(Boolean).join(' · '))}</div>
-        <span class="badge">${esc(badge)}</span>
-        ${leavingInfo(m) ? `<div class="leaving">${CLOCK}${esc(leavingInfo(m).label)}</div>` : ''}
+        ${avail}
+        ${leavingInfo(m) && !tc ? `<div class="leaving">${CLOCK}${esc(leavingInfo(m).label)}</div>` : ''}
         ${also.length && cat !== 'watched' ? `<div class="meta" style="margin-top:6px">Also ${esc(also.join(', and '))}</div>` : ''}</div>
     </div>
     ${top}
@@ -920,7 +926,7 @@ function renderDetail(id){
   if (!dlg.open) dlg.showModal();
 }
 
-const VERSION = 'Nov 26, 12:20 AM';
+const VERSION = 'Nov 26, 12:30 AM';
 /* GitHub lets browsers keep a copy of this page for about ten minutes, and home screen apps hold on
    even longer. On opening, and whenever the app comes back to the front, ask the server for a fresh
    copy; if it is a newer version, reload once to pick it up. */

@@ -106,8 +106,10 @@ main{padding:14px 16px calc(env(safe-area-inset-bottom) + 100px)}
 .chip.on{background:var(--text);border-color:var(--text);color:var(--bg);font-weight:700}
 .row2{display:flex;gap:8px;margin-bottom:18px}
 .row2 .btn{margin-top:12px}
-.huntrow{margin:2px 0 0}
-.huntrow .btn{flex:1;padding:12px 8px;font-size:15px}
+.huntbox{margin-top:14px}
+.huntrow{margin:0}
+.huntrow .btn{flex:1;margin-top:0;padding:12px 8px;font-size:15px}
+.unavail{margin-top:10px;font-size:14px;font-weight:600;line-height:1.3;color:var(--accent)}
 .btn.outline{background:none;border:1px solid var(--accent);color:var(--accent)}
 .alist{border-top:1px solid var(--line)}
 .arow{display:flex;justify-content:space-between;align-items:baseline;gap:14px;width:100%;border:0;
@@ -839,7 +841,7 @@ function renderDetail(id){
     home: OWNED_LABEL[src] || 'Owned', stream: whereLabel(m, 'stream').replace(/^On /, 'Streaming on '),
     rent: st ? `${[st.rent && 'Rent', st.buy && 'Buy'].filter(Boolean).join(' or ')} on ${st.name}` : 'Purchase',
     soon: 'Coming soon' + (soonInfo(m) ? ' · ' + soonInfo(m).label : ''),
-    hunt: 'Unavailable', watched: 'Watched'
+    hunt: 'Not currently available on subscribed services', watched: 'Watched'
   }[cat];
   const jfId = S.jf.items?.[String(m.id)], jfUrl = (S.config.jellyfinUrl || '').replace(/\/+$/, '');
   /* Other places a copy exists besides the one that decided the tab. */
@@ -867,14 +869,15 @@ function renderDetail(id){
   }
   /* Small "Available on" box beside the poster; the whole box is a link when a direct link is known. */
   const availBody = tc ? `${tc.icon}<span class="avx"><span class="lab">Available on</span><span class="avn">${esc(tc.name)}</span>${tc.note ? `<span class="avm">${esc(tc.note)}</span>` : ''}${tc.btn ? `<span class="avgo">${tc.btn.text} ›</span>` : ''}</span>` : '';
-  const avail = !tc ? `<span class="badge">${esc(badge)}</span>`
+  const avail = !tc ? (cat === 'hunt' ? `<div class="unavail">${esc(badge)}</div>` : `<span class="badge">${esc(badge)}</span>`)
     : tc.btn ? `<a class="avail" target="_blank" rel="noopener" href="${esc(tc.btn.href)}">${availBody}</a>` : `<div class="avail">${availBody}</div>`;
   /* Unavailable films: search for a used disc, using the format picked below if there is one. */
   const discQuery = [m.title, m.year, m.format || 'blu-ray dvd'].filter(Boolean).join(' ');
-  const hunt = cat === 'hunt' ? `<div class="row2 huntrow">
-      <a class="btn primary" target="_blank" rel="noopener" href="https://www.amazon.com/s?k=${encodeURIComponent(discQuery)}&i=movies-tv">Search Amazon</a>
-      <a class="btn primary" target="_blank" rel="noopener" href="https://www.ebay.com/sch/i.html?_nkw=${encodeURIComponent(discQuery)}&_sacat=617&LH_ItemCondition=3000">Search eBay, used</a>
-    </div>` : '';
+  const hunt = cat === 'hunt' ? `<div class="block huntbox"><h3>Search for physical media</h3>
+      <div class="row2 huntrow">
+        <a class="btn primary" target="_blank" rel="noopener" href="https://www.amazon.com/s?k=${encodeURIComponent(discQuery)}&i=movies-tv">Amazon</a>
+        <a class="btn primary" target="_blank" rel="noopener" href="https://www.ebay.com/sch/i.html?_nkw=${encodeURIComponent(discQuery)}&_sacat=617&LH_ItemCondition=3000">eBay</a>
+      </div></div>` : '';
   const top = hunt + (jfLink && !(cat === 'home' && src === 'Jellyfin') ? `<a class="btn" target="_blank" rel="noopener" href="${esc(jfLink)}">Play in Jellyfin (home wifi)</a>` : '');
   const mine = m.ratings?.[S.user.uid]?.stars || 0;
   const others = Object.entries(m.ratings || {}).filter(([uid]) => uid !== S.user.uid);
@@ -909,7 +912,7 @@ function renderDetail(id){
       </select>
       ${[['In US theaters', m.rel?.theatrical], ['Digital release', m.rel?.digital], ['Disc release', m.rel?.physical]].filter(x => x[1]).map(([k, v]) => `<p class="hint">${k}: ${esc(fmtDate(v))}</p>`).join('')}
       <p class="hint">It moves to Streaming or Purchase on its own once it shows up there.</p></div>` : ''}
-    ${cat === 'hunt' ? `<div class="block"><h3>Finding a copy</h3>
+    ${cat === 'hunt' ? `<div class="block"><h3>Format and notes</h3>
       ${elsewhere.length ? `<p class="hint" style="margin:0 0 8px">Streaming only on: ${esc(elsewhere.join(', '))}</p>` : ''}
       <select class="field" data-change="format" style="margin-top:0">
         ${['', '4K UHD', 'Blu-ray', 'DVD'].map(f => `<option value="${f}" ${m.format === f ? 'selected' : ''}>${f || 'Any format'}</option>`).join('')}
@@ -934,7 +937,7 @@ function renderDetail(id){
   if (!dlg.open) dlg.showModal();
 }
 
-const VERSION = 'Nov 26, 12:50 AM';
+const VERSION = 'Nov 26, 1:00 AM';
 /* GitHub lets browsers keep a copy of this page for about ten minutes, and home screen apps hold on
    even longer. On opening, and whenever the app comes back to the front, ask the server for a fresh
    copy; if it is a newer version, reload once to pick it up. */

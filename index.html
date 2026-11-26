@@ -53,8 +53,8 @@ h1{margin:0;font-size:26px;letter-spacing:.14em;text-transform:uppercase;font-we
 .tab.on{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
 .tab b{font-weight:700;opacity:.8;margin-left:5px}
 main{padding:14px 16px calc(env(safe-area-inset-bottom) + 96px)}
-.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(104px,1fr));gap:12px}
-.movie{border:0;padding:0;background:none;text-align:left;position:relative}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(104px,1fr));gap:12px;align-items:start}
+.movie{border:0;padding:0;background:none;text-align:left;position:relative;display:block;align-self:start;width:100%}
 .poster{width:100%;aspect-ratio:2/3;border-radius:10px;background:var(--chip);object-fit:cover;display:block}
 .noposter{display:flex;align-items:center;justify-content:center;padding:8px;text-align:center;
   font-size:13px;font-weight:600;color:var(--muted)}
@@ -354,7 +354,14 @@ function posterTag(m, size = 'w342'){
 function cardLogos(m, cat){
   if (cat === 'home') { const o = owned(m); return `<span class="src" title="${esc(OWNED_LABEL[o] || 'Owned')}">${SRC_LETTER[o] || '•'}</span>`; }
   let items = [];
-  if (cat === 'stream') items = subs(m).filter(x => isMine(x.n));
+  if (cat === 'stream') {
+    const bySvc = new Map();
+    for (const x of subs(m)) {
+      const svc = enabledServices().find(sv => sv.match.test(x.n));
+      if (svc && x.l && !bySvc.has(svc.id)) bySvc.set(svc.id, x);
+    }
+    items = [...bySvc.values()];
+  }
   if (cat === 'rent') { const s = store(m); if (s) items = [{ n: s.name, l: s.logo }]; }
   const seen = new Set();
   return items.filter(x => x.l && !seen.has(x.l) && seen.add(x.l)).slice(0, 3)

@@ -575,6 +575,12 @@ function renderDetail(id){
     hunt: 'Track down a copy', watched: 'Watched'
   }[cat];
   const jfId = S.jf.items?.[String(m.id)], jfUrl = (S.config.jellyfinUrl || '').replace(/\/+$/, '');
+  /* Other places a copy exists besides the one that decided the tab. */
+  const mineNow = [...new Set(subs(m).filter(x => isMine(x.n)).map(x => (enabledServices().find(sv => sv.match.test(x.n)) || {}).name).filter(Boolean))];
+  const also = [];
+  if (src === 'Apple' && mineNow.length) also.push('streaming on ' + mineNow.join(', '));
+  if (inJellyfin(m) && src !== 'Jellyfin') also.push('at home in Jellyfin');
+  if (inJellyfin(m) && src === 'Jellyfin' && cat === 'stream') also.push('at home in Jellyfin');
   const mine = m.ratings?.[S.user.uid]?.stars || 0;
   const others = Object.entries(m.ratings || {}).filter(([uid]) => uid !== S.user.uid);
   const elsewhere = subs(m).filter(x => !isMine(x.n)).map(x => x.n);
@@ -586,12 +592,12 @@ function renderDetail(id){
       <div><h2>${esc(m.title)}</h2>
         <div class="meta">${esc([m.year, m.runtime ? m.runtime + ' min' : '', (m.genres || []).slice(0, 3).join(', ')].filter(Boolean).join(' · '))}</div>
         <span class="badge">${esc(badge)}</span>
-        ${cat !== 'home' && cat !== 'watched' && inJellyfin(m) ? `<div class="meta" style="margin-top:6px">Also at home in Jellyfin</div>` : ''}</div>
+        ${also.length && cat !== 'watched' ? `<div class="meta" style="margin-top:6px">Also ${esc(also.join(', and '))}</div>` : ''}</div>
     </div>
     ${(m.cast || []).length || m.director ? `<p class="credits">${(m.cast || []).length ? `<b>Starring</b> ${m.cast.map((n, i) => personLink(n, m.castIds?.[i], m.id)).join(', ')}` : ''}${(m.cast || []).length && m.director ? '<br>' : ''}${m.director ? `<b>Directed by</b> ${m.director.split(', ').map((n, i) => personLink(n, m.directorIds?.[i], m.id)).join(', ')}` : ''}</p>` : ''}
     ${m.overview ? `<p class="overview">${esc(m.overview)}</p>` : ''}
-    ${jfId && jfUrl ? `<a class="btn primary" target="_blank" rel="noopener" href="${esc(jfUrl)}/web/index.html#!/details?id=${esc(jfId)}">Play in Jellyfin (home wifi)</a>` : ''}
     ${src === 'Apple' && !m.watched ? `<a class="btn primary" target="_blank" rel="noopener" href="https://tv.apple.com/">Open Apple TV</a>` : ''}
+    ${jfId && jfUrl ? `<a class="btn ${cat === 'home' && src === 'Jellyfin' ? 'primary' : ''}" target="_blank" rel="noopener" href="${esc(jfUrl)}/web/index.html#!/details?id=${esc(jfId)}">Play in Jellyfin (home wifi)</a>` : ''}
     ${m.watched ? '' : `<div class="row2" style="margin-bottom:0">
       <button class="btn ${m.rewatch ? '' : 'primary'}" data-act="rewatch" data-v="0">First watch</button>
       <button class="btn ${m.rewatch ? 'primary' : ''}" data-act="rewatch" data-v="1">↻ Rewatch</button></div>`}
@@ -631,7 +637,7 @@ function renderDetail(id){
   if (!dlg.open) dlg.showModal();
 }
 
-const VERSION = 'Nov 25, 6:10 PM';
+const VERSION = 'Nov 25, 6:40 PM';
 /* GitHub lets browsers keep a copy of this page for about ten minutes, and home screen apps hold on
    even longer. On opening, and whenever the app comes back to the front, ask the server for a fresh
    copy; if it is a newer version, reload once to pick it up. */

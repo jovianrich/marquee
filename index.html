@@ -69,6 +69,9 @@ main{padding:14px 16px calc(env(safe-area-inset-bottom) + 100px)}
 .movie .t{font-size:13px;font-weight:600;margin-top:6px;display:-webkit-box;-webkit-line-clamp:2;
   -webkit-box-orient:vertical;overflow:hidden}
 .movie .s{font-size:12px;color:var(--muted)}
+.cr{display:flex;flex-direction:column;margin-top:6px;font-size:13px;line-height:1.3;color:var(--accent);letter-spacing:.5px}
+.cr b{color:var(--text);font-weight:700;letter-spacing:0}
+.cr + .t{margin-top:3px}
 .who{position:absolute;top:6px;left:6px;background:var(--accent);color:var(--accent-ink);
   min-width:22px;height:22px;padding:0 5px;border-radius:11px;font-size:11px;font-weight:800;
   display:flex;align-items:center;justify-content:center}
@@ -661,6 +664,13 @@ function tonightPool(over = {}){
     return true;
   });
 }
+/* Watched posters: each person's rating on its own line, yours first. */
+function cardRatings(m){
+  const rows = Object.entries(m.ratings || {}).filter(([, r]) => Number(r?.stars) > 0)
+    .sort(([a], [b]) => (a === S.user.uid ? -1 : 0) - (b === S.user.uid ? -1 : 0))
+    .map(([uid, r]) => `<span><b>${esc(initialOf(nameOf(uid, r.name)))}:</b> ${starText(Number(r.stars))}</span>`);
+  return rows.length ? `<div class="cr">${rows.join('')}</div>` : '';
+}
 function card(m){
   const cat = classify(m);
   const sub = (S.tab === 'all' || S.tab === 'tonight' || S.tab === 'soon') ? whereLabel(m, cat)
@@ -671,6 +681,7 @@ function card(m){
     <span class="who" title="Added by ${esc(nameOf(m.addedBy?.uid, m.addedBy?.name))}">${esc(initialOf(nameOf(m.addedBy?.uid, m.addedBy?.name)))}</span>
     <span class="logos">${cardLogos(m, cat)}</span>
     ${leavingInfo(m) ? `<span class="clock" title="${esc(leavingInfo(m).label)}">${CLOCK}</span>` : ''}
+    ${cat === 'watched' ? cardRatings(m) : ''}
     <div class="t">${esc(m.title)}</div>
     <div class="s">${esc(sub)}${m.rewatch ? ' · ↻' : ''}</div>
   </button>`;
@@ -940,7 +951,7 @@ function renderDetail(id){
   if (!dlg.open) dlg.showModal();
 }
 
-const VERSION = 'Nov 26, 9:40 AM';
+const VERSION = 'Nov 26, 9:50 AM';
 /* GitHub lets browsers keep a copy of this page for about ten minutes, and home screen apps hold on
    even longer. On opening, and whenever the app comes back to the front, ask the server for a fresh
    copy; if it is a newer version, reload once to pick it up. */

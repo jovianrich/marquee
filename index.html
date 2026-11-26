@@ -748,20 +748,20 @@ function sortBar(tab, full, shown){
   return `<div class="chips sortbar">${sorts}<button class="chip ${n ? 'on' : ''}" data-act="filtopen" aria-expanded="${S.filt.open}">Filter${n ? ' · ' + n : ''}</button></div>
     ${panel}${n ? `<p class="hint" style="margin:0 0 10px">Showing ${shown.length} of ${full.length}.</p>` : ''}`;
 }
-function render(){
+function buildPage(){
   if (!S.user) {
-    app.innerHTML = `<div class="center"><h1>Marquee</h1><div class="meta">Your shared movie list</div>
+    return `<div class="center"><h1>Marquee</h1><div class="meta">Your shared movie list</div>
       <button class="btn primary" data-act="signin">Sign in with Google</button></div>`;
     return;
   }
   if (S.denied) {
-    app.innerHTML = `<div class="center"><h1>Marquee</h1>
+    return `<div class="center"><h1>Marquee</h1>
       <div>${esc(S.user.email)} isn't on this list's guest list.</div>
       <div class="meta">If that's unexpected, check the database rules include this exact address.</div>
       <button class="btn" data-act="signout">Sign out</button></div>`;
     return;
   }
-  if (!S.ready) return;
+  if (!S.ready) return null;
   const groups = Object.fromEntries(TABS.map(t => [t.id, []]));
   for (const m of S.movies.values()) groups[classify(m)].push(m);
   if (!S.sort) S.sort = loadSort();
@@ -779,7 +779,7 @@ function render(){
     watched: 'No movies marked as watched yet.',
     all: 'Your list is empty. Tap + Add movie to start.'
   }[S.tab];
-  app.innerHTML = `
+  return `
     <header>
       <div class="top"><h1>Marquee</h1><span class="topbtns"><button class="addbtn" data-act="add">+ Add</button><button class="iconbtn gear" data-act="settings" aria-label="Settings">⚙︎</button></span></div>
       <div class="bulbs" aria-hidden="true"></div>
@@ -793,6 +793,14 @@ function render(){
         This product uses the TMDB API but is not endorsed or certified by TMDB.</footer>
     </main>
     <nav class="where">${[['home', 'At home'], ['stream', 'Streaming'], ['rent', 'Rent / buy'], ['soon', 'Soon'], ['hunt', 'Track down']].map(([id, label]) => `<button class="seg ${id === S.tab ? 'on' : ''}" data-act="tab" data-id="${id}"><b>${groups[id].length}</b>${label}</button>`).join('')}</nav>`;
+}
+/* Only touch the page when what it shows has actually changed. Background updates to the list
+   (refreshing availability, cast, departures) arrive many times a minute, and redrawing on each
+   one made every poster reload and blink. */
+let lastPage = null;
+function render(){
+  const html = buildPage();
+  if (html !== null && html !== lastPage) { lastPage = html; app.innerHTML = html; }
   if (S.open && dlg.open) renderDetail(S.open);
 }
 
@@ -823,7 +831,7 @@ function renderDetail(id){
   const mine = m.ratings?.[S.user.uid]?.stars || 0;
   const others = Object.entries(m.ratings || {}).filter(([uid]) => uid !== S.user.uid);
   const elsewhere = streamList(m).filter(x => !x.mine).map(x => x.n);
-  dlg.innerHTML = `<div class="sheet">
+  const html = `<div class="sheet" data-movie="${esc(String(id))}">
     <div class="sheethead"><span class="meta">Added by ${esc(nameOf(m.addedBy?.uid, m.addedBy?.name))}</span>
       <button class="iconbtn" data-act="close" aria-label="Close">✕</button></div>
     <div class="hero">
@@ -874,10 +882,12 @@ function renderDetail(id){
     <button class="btn" data-act="refresh">Refresh availability</button>
     <button class="btn danger" data-act="remove">Remove from list</button>
   </div>`;
+  const showing = dlg.firstElementChild?.dataset?.movie === String(id);
+  if (!showing || html !== S.detailHtml) { S.detailHtml = html; dlg.innerHTML = html; }
   if (!dlg.open) dlg.showModal();
 }
 
-const VERSION = 'Nov 25, 11:40 PM';
+const VERSION = 'Nov 25, 11:55 PM';
 /* GitHub lets browsers keep a copy of this page for about ten minutes, and home screen apps hold on
    even longer. On opening, and whenever the app comes back to the front, ask the server for a fresh
    copy; if it is a newer version, reload once to pick it up. */

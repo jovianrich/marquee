@@ -707,6 +707,15 @@ function diversePick(ids, n){
   }
   return out;
 }
+const sourceName = src => src === 'letterboxd' ? 'Letterboxd import' : nameOf(src.slice(3), [...S.movies.values()].find(m => m.addedBy?.uid === src.slice(3))?.addedBy?.name);
+/* Counts for the Settings summary. */
+function listBreakdown(){
+  const all = [...S.movies.values()], by = new Map(), tabs = new Map();
+  for (const m of all) { by.set(sourceOf(m), (by.get(sourceOf(m)) || 0) + 1); const c = classify(m); tabs.set(c, (tabs.get(c) || 0) + 1); }
+  const src = [...by].sort((a, b) => b[1] - a[1]).map(([k, n]) => `${sourceName(k)}: ${n}`);
+  const tab = TABS.filter(t => tabs.get(t.id)).map(t => `${t.label}: ${tabs.get(t.id)}`);
+  return { total: all.length, src, tab };
+}
 function stubRow(m){
   const cat = classify(m);
   const bits = [m.year, leavingInfo(m)?.label || whereLabel(m, cat), m.rewatch ? 'Rewatch' : 'Added by ' + nameOf(m.addedBy?.uid, m.addedBy?.name)].filter(Boolean);
@@ -769,7 +778,7 @@ const lenOk = (m, id) => { const t = TIMES.find(x => x.id === id) || TIMES[0]; r
 function passFilt(m){
   if (!lenOk(m, S.filt.len)) return false;
   if (S.filt.genre && !(m.genres || []).includes(S.filt.genre)) return false;
-  if (S.filt.by && (m.addedBy?.uid || '') !== S.filt.by) return false;
+  if (S.filt.by && sourceOf(m) !== S.filt.by) return false;
   if (S.filt.leaving && !leavingInfo(m)) return false;
   return true;
 }
@@ -782,7 +791,7 @@ function sortBar(tab, full, shown){
     const opt = (k, v, label, count) => `<button class="chip ${S.filt[k] === v ? 'on' : ''}" data-act="filt" data-k="${k}" data-v="${esc(v)}">${esc(label)} · ${count}</button>`;
     const tally = pick => { const t = new Map(); for (const m of full) for (const key of pick(m)) t.set(key, (t.get(key) || 0) + 1); return [...t].sort((a, b) => b[1] - a[1] || String(a[0]).localeCompare(String(b[0]))); };
     const lens = TIMES.filter(t => t.id !== 'any').map(t => [t, full.filter(m => lenOk(m, t.id)).length]).filter(x => x[1] || S.filt.len === x[0].id);
-    const genres = tally(m => m.genres || []), people = tally(m => m.addedBy?.uid ? [m.addedBy.uid] : []);
+    const genres = tally(m => m.genres || []), people = tally(m => [sourceOf(m)]);
     const group = (title, chips) => chips ? `<div class="lab" style="margin:10px 0 6px">${title}</div><div class="chips">${chips}</div>` : '';
     /* Long genre lists start with the six most common; the chosen one is always kept in view. */
     const few = S.filt.more ? genres : genres.filter(([g], i) => i < 6 || g === S.filt.genre);
@@ -792,7 +801,7 @@ function sortBar(tab, full, shown){
       ${goingN || S.filt.leaving ? group('Availability', `<button class="chip ${S.filt.leaving ? 'on' : ''}" data-act="filt" data-k="leaving" data-v="1">${CLOCK} Leaving soon · ${goingN}</button>`) : ''}
       ${group('Length', lens.map(([t, c]) => opt('len', t.id, t.label, c)).join(''))}
       ${group('Genre', few.map(([g, c]) => opt('genre', g, g, c)).join('') + moreBtn)}
-      ${people.length || S.filt.by ? group('Added by', people.map(([uid, c]) => opt('by', uid, nameOf(uid, full.find(m => m.addedBy?.uid === uid)?.addedBy?.name), c)).join('')) : ''}
+      ${people.length || S.filt.by ? group('Added by', people.map(([src, c]) => opt('by', src, sourceName(src), c)).join('')) : ''}
       ${n ? `<button class="btn" data-act="filtclear">Clear filters</button>` : ''}
     </div>`;
   }
@@ -967,7 +976,7 @@ function renderDetail(id){
   if (!dlg.open) dlg.showModal();
 }
 
-const VERSION = 'Nov 26, 10:10 AM';
+const VERSION = 'Nov 26, 10:20 AM';
 /* GitHub lets browsers keep a copy of this page for about ten minutes, and home screen apps hold on
    even longer. On opening, and whenever the app comes back to the front, ask the server for a fresh
    copy; if it is a newer version, reload once to pick it up. */
@@ -1134,6 +1143,10 @@ function renderSettings(){
   dlg.innerHTML = `<div class="sheet">
     <div class="sheethead"><h2>Settings</h2><button class="iconbtn" data-act="close" aria-label="Close">✕</button></div>
     <div class="meta">Signed in as ${esc(S.user.email)}. Settings are shared by everyone on the list.</div>
+    <div class="block" id="breakdown"><h3>Your list</h3>
+      ${(() => { const b = listBreakdown(); return `<p class="hint" style="margin:0;font-size:14px;color:var(--text)">${b.total} films in total.</p>
+        <p class="hint">Where they came from. ${esc(b.src.join(' · '))}</p>
+        <p class="hint">Where they are now. ${esc(b.tab.join(' · '))}</p>`; })()}</div>
     <div class="block"><h3>Your name</h3>
       <input class="field" id="myname" value="${esc(myName())}" autocomplete="off" maxlength="20">
       <p class="hint">Shown on movies you add and on your ratings. Each person sets their own.</p></div>

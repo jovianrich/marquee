@@ -87,6 +87,7 @@ main{padding:14px 16px calc(env(safe-area-inset-bottom) + 100px)}
 .stub i{font-style:normal;font-size:11px;font-weight:700;letter-spacing:.12em}
 .stubbody{flex:1;min-width:0;border-left:3px dashed var(--board);padding:8px 10px;display:flex;flex-direction:column;justify-content:center;gap:3px}
 .st{font-family:var(--display);font-size:24px;line-height:1;letter-spacing:.05em;text-transform:uppercase}
+.sc{font-size:13px;font-weight:600}
 .sm{font-size:12px;color:var(--muted)}
 .chips{display:flex;flex-wrap:wrap;gap:6px;margin:14px 0 0}
 .chip{height:44px;padding:0 14px;border:1px solid var(--line);background:transparent;border-radius:4px;font-size:13px;font-weight:600;color:var(--text)}
@@ -124,6 +125,8 @@ dialog::backdrop{background:rgba(0,0,0,.55)}
 .badge{display:inline-block;margin-top:10px;padding:5px 10px;border-radius:999px;background:var(--accent);
   color:var(--accent-ink);font-size:13px;font-weight:700}
 .overview{font-size:14px;margin:14px 0;color:var(--text)}
+.credits{font-size:14px;margin:14px 0 0;line-height:1.5}
+.credits b{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin-right:4px}
 .block{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:12px 14px;margin-top:12px}
 .block h3{margin:0 0 8px;font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
 .prow{display:flex;gap:10px;align-items:flex-start;padding:7px 0;border-top:1px solid var(--line)}
@@ -332,28 +335,33 @@ function pickRelease(d){
   const first = types => (us?.release_dates || []).filter(r => types.includes(r.type)).map(r => (r.release_date || '').slice(0, 10)).filter(Boolean).sort()[0] || '';
   return { theatrical: first([3, 2]) || first([1]), digital: first([4]), physical: first([5]), primary: d?.release_date || '' };
 }
+function pickCredits(d){
+  const cast = (d?.credits?.cast || []).slice().sort((a, b) => (a.order ?? 99) - (b.order ?? 99)).slice(0, 3).map(c => c.name).filter(Boolean);
+  const director = (d?.credits?.crew || []).filter(c => c.job === 'Director').map(c => c.name).slice(0, 2).join(', ');
+  return { cast, director };
+}
 function pickProviders(d){
   const us = d?.['watch/providers']?.results?.US || {};
   return { link: us.link || '', flatrate: slim(us.flatrate), free: slim(us.free), ads: slim(us.ads),
            rent: slim(us.rent), buy: slim(us.buy), at: Date.now() };
 }
 async function fetchMovie(id){
-  const d = await tmdb('/movie/' + id, { append_to_response: 'watch/providers,release_dates' });
+  const d = await tmdb('/movie/' + id, { append_to_response: 'watch/providers,release_dates,credits' });
   return {
     id: d.id, title: d.title || '', year: (d.release_date || '').slice(0, 4), poster: d.poster_path || '',
     runtime: d.runtime || 0, genres: (d.genres || []).map(g => g.name), overview: d.overview || '',
-    providers: pickProviders(d), rel: pickRelease(d)
+    providers: pickProviders(d), rel: pickRelease(d), ...pickCredits(d)
   };
 }
 async function refreshProviders(id){
-  const d = await tmdb('/movie/' + id, { append_to_response: 'watch/providers,release_dates' });
-  await updateDoc(doc(db, 'movies', String(id)), { providers: pickProviders(d), rel: pickRelease(d) });
+  const d = await tmdb('/movie/' + id, { append_to_response: 'watch/providers,release_dates,credits' });
+  await updateDoc(doc(db, 'movies', String(id)), { providers: pickProviders(d), rel: pickRelease(d), ...pickCredits(d) });
 }
 async function refreshStale(){
   if (S.refreshed || !S.config.tmdbKey || !S.movies.size) return;
   S.refreshed = true;
   for (const m of [...S.movies.values()]) {
-    if (m.watched || (m.rel && (m.providers?.at || 0) > Date.now() - DAY)) continue;
+    if ((m.watched && m.cast) || (m.rel && m.cast && (m.providers?.at || 0) > Date.now() - DAY)) continue;
     try { await refreshProviders(m.id); } catch (e) { break; }
     await new Promise(r => setTimeout(r, 300));
   }
@@ -450,7 +458,7 @@ function stubRow(m){
   const bits = [m.year, whereLabel(m, cat), m.rewatch ? 'Rewatch' : 'Added by ' + nameOf(m.addedBy?.uid, m.addedBy?.name)].filter(Boolean);
   return `<button class="stubrow" data-act="open" data-id="${m.id}">
     <span class="stub"><b>${m.runtime || '?'}</b><i>MIN</i></span>
-    <span class="stubbody"><span class="st">${esc(m.title)}</span><span class="sm">${esc(bits.join(' · '))}</span></span>
+    <span class="stubbody"><span class="st">${esc(m.title)}</span>${(m.cast || []).length ? `<span class="sc">${esc(m.cast.slice(0, 2).join(', '))}</span>` : ''}<span class="sm">${esc(bits.join(' · '))}</span></span>
   </button>`;
 }
 function tonightHTML(){
@@ -559,6 +567,7 @@ function renderDetail(id){
         <div class="meta">${esc([m.year, m.runtime ? m.runtime + ' min' : '', (m.genres || []).slice(0, 3).join(', ')].filter(Boolean).join(' · '))}</div>
         <span class="badge">${esc(badge)}</span></div>
     </div>
+    ${(m.cast || []).length || m.director ? `<p class="credits">${(m.cast || []).length ? `<b>Starring</b> ${esc(m.cast.join(', '))}` : ''}${(m.cast || []).length && m.director ? '<br>' : ''}${m.director ? `<b>Directed by</b> ${esc(m.director)}` : ''}</p>` : ''}
     ${m.overview ? `<p class="overview">${esc(m.overview)}</p>` : ''}
     ${jfId && jfUrl ? `<a class="btn primary" target="_blank" rel="noopener" href="${esc(jfUrl)}/web/index.html#!/details?id=${esc(jfId)}">Play in Jellyfin (home wifi)</a>` : ''}
     ${src === 'Apple' && !m.watched ? `<a class="btn primary" target="_blank" rel="noopener" href="https://tv.apple.com/">Open Apple TV</a>` : ''}

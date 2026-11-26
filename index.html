@@ -270,10 +270,25 @@ function enabledServices(){
   const on = S.config.services;
   return SERVICES.filter(s => !Array.isArray(on) || on.includes(s.id));
 }
-const isMine = name => enabledServices().some(s => s.match.test(name));
+const baseName = n => String(n || '').replace(/\s+(Amazon|Apple TV|Roku Premium|Roku)\s+Channel\s*$/i, '')
+  .replace(/\s+(Standard|Basic|Essential|Premium)?\s*with Ads\s*$/i, '').trim();
+const svcFor = name => enabledServices().find(sv => sv.match.test(baseName(name)));
+const isMine = name => !!svcFor(name);
 function subs(m){
   const p = m.providers || {};
   return [...(p.flatrate||[]), ...(p.free||[]), ...(p.ads||[])];
+}
+/* One entry per service: "HBO Max" and "HBO Max Amazon Channel" are the same thing to watch on,
+   as are a service's ad-supported tiers. Your own services show under the name in Settings. */
+function streamList(m){
+  const out = new Map();
+  const all = subs(m).slice().sort((a, b) => (a.n === baseName(a.n) ? 0 : 1) - (b.n === baseName(b.n) ? 0 : 1));
+  for (const x of all) {
+    const svc = svcFor(x.n);
+    const key = svc ? 'svc:' + svc.id : norm(baseName(x.n));
+    if (!out.has(key)) out.set(key, { n: svc ? svc.name : baseName(x.n), l: x.l, mine: !!svc });
+  }
+  return [...out.values()].sort((a, b) => (b.mine ? 1 : 0) - (a.mine ? 1 : 0));
 }
 function store(m){
   const p = m.providers || {};
@@ -434,7 +449,7 @@ function cardLogos(m, cat){
   if (cat === 'stream') {
     const bySvc = new Map();
     for (const x of subs(m)) {
-      const svc = enabledServices().find(sv => sv.match.test(x.n));
+      const svc = svcFor(x.n);
       if (svc && x.l && !bySvc.has(svc.id)) bySvc.set(svc.id, x);
     }
     items = [...bySvc.values()];
@@ -446,7 +461,7 @@ function cardLogos(m, cat){
 }
 function whereLabel(m, cat){
   if (cat === 'home') return OWNED_LABEL[owned(m)] || 'Owned';
-  if (cat === 'stream') { const hit = subs(m).find(x => isMine(x.n)); return hit ? 'On ' + hit.n : 'Streaming'; }
+  if (cat === 'stream') { const mine = streamList(m).filter(x => x.mine); return mine.length ? 'On ' + mine.slice(0, 2).map(x => x.n).join(', ') : 'Streaming'; }
   if (cat === 'rent') { const st = store(m); return st ? [st.rent && 'Rent', st.buy && 'Buy'].filter(Boolean).join('/') + ' on ' + st.name : 'Rent or buy'; }
   if (cat === 'soon') return soonInfo(m)?.label || 'Coming soon';
   return cat === 'hunt' ? 'Track down' : 'Watched';
@@ -569,7 +584,7 @@ function render(){
 
 function provRow(label, items){
   const body = items.length
-    ? `<div class="plist">${items.map(x => `<span class="prov ${isMine(x.n) && label === 'Stream' ? 'mine' : ''}">${x.l ? `<img alt="" src="${IMG}w92${esc(x.l)}">` : ''}${esc(x.n)}</span>`).join('')}</div>`
+    ? `<div class="plist">${items.map(x => `<span class="prov ${label === 'Stream' && (x.mine ?? isMine(x.n)) ? 'mine' : ''}">${x.l ? `<img alt="" src="${IMG}w92${esc(x.l)}">` : ''}${esc(x.n)}</span>`).join('')}</div>`
     : `<div class="none">Not available</div>`;
   return `<div class="prow"><div class="k">${label}</div>${body}</div>`;
 }
@@ -586,14 +601,14 @@ function renderDetail(id){
   }[cat];
   const jfId = S.jf.items?.[String(m.id)], jfUrl = (S.config.jellyfinUrl || '').replace(/\/+$/, '');
   /* Other places a copy exists besides the one that decided the tab. */
-  const mineNow = [...new Set(subs(m).filter(x => isMine(x.n)).map(x => (enabledServices().find(sv => sv.match.test(x.n)) || {}).name).filter(Boolean))];
+  const mineNow = streamList(m).filter(x => x.mine).map(x => x.n);
   const also = [];
   if (src === 'Apple' && mineNow.length) also.push('streaming on ' + mineNow.join(', '));
   if (inJellyfin(m) && src !== 'Jellyfin') also.push('at home in Jellyfin');
   if (inJellyfin(m) && src === 'Jellyfin' && cat === 'stream') also.push('at home in Jellyfin');
   const mine = m.ratings?.[S.user.uid]?.stars || 0;
   const others = Object.entries(m.ratings || {}).filter(([uid]) => uid !== S.user.uid);
-  const elsewhere = subs(m).filter(x => !isMine(x.n)).map(x => x.n);
+  const elsewhere = streamList(m).filter(x => !x.mine).map(x => x.n);
   dlg.innerHTML = `<div class="sheet">
     <div class="sheethead"><span class="meta">Added by ${esc(nameOf(m.addedBy?.uid, m.addedBy?.name))}</span>
       <button class="iconbtn" data-act="close" aria-label="Close">✕</button></div>
@@ -614,7 +629,7 @@ function renderDetail(id){
     <div class="block"><h3>Why it's on the list</h3>
       <input class="field" data-change="why" placeholder="Who recommended it, or why you want to see it" value="${esc(m.why || '')}" autocomplete="off"></div>
     <div class="block"><h3>Where to watch</h3>
-      ${provRow('Stream', subs(m))}${provRow('Rent', p.rent || [])}${provRow('Buy', p.buy || [])}
+      ${provRow('Stream', streamList(m))}${provRow('Rent', p.rent || [])}${provRow('Buy', p.buy || [])}
       ${p.link ? `<a class="btn" target="_blank" rel="noopener" href="${esc(p.link)}">See all options</a>` : ''}
       <p class="hint">Availability from JustWatch, US. ${p.at ? 'Checked ' + new Date(p.at).toLocaleDateString() + '.' : ''}</p>
     </div>
@@ -647,7 +662,7 @@ function renderDetail(id){
   if (!dlg.open) dlg.showModal();
 }
 
-const VERSION = 'Nov 25, 7:00 PM';
+const VERSION = 'Nov 25, 7:30 PM';
 /* GitHub lets browsers keep a copy of this page for about ten minutes, and home screen apps hold on
    even longer. On opening, and whenever the app comes back to the front, ask the server for a fresh
    copy; if it is a newer version, reload once to pick it up. */

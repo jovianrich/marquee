@@ -672,7 +672,7 @@ function sortBar(tab, full, shown){
     panel = `<div class="block" style="margin:0 0 12px;padding-top:2px">
       ${group('Length', lens.map(([t, c]) => opt('len', t.id, t.label, c)).join(''))}
       ${group('Genre', genres.map(([g, c]) => opt('genre', g, g, c)).join(''))}
-      ${people.length > 1 || S.filt.by ? group('Added by', people.map(([uid, c]) => opt('by', uid, nameOf(uid, full.find(m => m.addedBy?.uid === uid)?.addedBy?.name), c)).join('')) : ''}
+      ${people.length || S.filt.by ? group('Added by', people.map(([uid, c]) => opt('by', uid, nameOf(uid, full.find(m => m.addedBy?.uid === uid)?.addedBy?.name), c)).join('')) : ''}
       ${n ? `<button class="btn" data-act="filtclear">Clear filters</button>` : ''}
     </div>`;
   }
@@ -807,7 +807,7 @@ function renderDetail(id){
   if (!dlg.open) dlg.showModal();
 }
 
-const VERSION = 'Nov 25, 10:55 PM';
+const VERSION = 'Nov 25, 11:00 PM';
 /* GitHub lets browsers keep a copy of this page for about ten minutes, and home screen apps hold on
    even longer. On opening, and whenever the app comes back to the front, ask the server for a fresh
    copy; if it is a newer version, reload once to pick it up. */

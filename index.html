@@ -15,7 +15,7 @@
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Inter:wght@400;600;700;800&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Inter:wght@400;600;700;800&display=swap" media="print" onload="this.media='all'">
 <style>
 :root{
   color-scheme: light dark;
@@ -197,6 +197,7 @@ label.check input{width:20px;height:20px;accent-color:var(--accent)}
 .center{min-height:100dvh;display:flex;flex-direction:column;align-items:center;justify-content:center;
   padding:30px;text-align:center;gap:14px}
 .center .btn{max-width:300px}
+#updbar{position:fixed;left:50%;transform:translateX(-50%);top:calc(env(safe-area-inset-top) + 6px);z-index:30;border:0;border-radius:999px;padding:8px 14px;background:var(--text);color:var(--bg);font:inherit;font-size:13px;font-weight:700;box-shadow:0 4px 14px rgba(0,0,0,.3)}
 .toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(env(safe-area-inset-bottom) + 92px);
   background:var(--text);color:var(--bg);padding:10px 16px;border-radius:999px;font-size:14px;z-index:20;max-width:88vw}
 select.field,textarea.field{margin-top:8px}
@@ -210,7 +211,7 @@ select.field,textarea.field{margin-top:8px}
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
 import { getAuth, GoogleAuthProvider, signInWithPopup, signInWithRedirect, onAuthStateChanged, signOut }
   from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
-import { getFirestore, collection, doc, onSnapshot, setDoc, updateDoc, deleteDoc, deleteField }
+import { getFirestore, initializeFirestore, persistentLocalCache, persistentMultipleTabManager, collection, doc, onSnapshot, setDoc, updateDoc, deleteDoc, deleteField }
   from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
 const firebaseConfig = {
@@ -224,7 +225,12 @@ const firebaseConfig = {
 
 const fb = initializeApp(firebaseConfig);
 const auth = getAuth(fb);
-const db = getFirestore(fb);
+const T0 = performance.now(), timing = { auth: 0, list: 0, saved: false };
+/* Keep a copy of the list on this device. The app can then show it straight away on opening
+   and fetch changes afterwards, instead of waiting for the whole list to download every time. */
+let db;
+try { db = initializeFirestore(fb, { localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() }) }); }
+catch (e) { db = getFirestore(fb); }
 
 /* Subscriptions. "match" is tested against the provider name TMDB/JustWatch returns. */
 const SERVICES = [
@@ -464,6 +470,7 @@ async function refreshStale(){
 function listen(){
   const fail = e => { if (e.code === 'permission-denied') { S.denied = true; render(); } else toast(e.message); };
   onSnapshot(collection(db, 'movies'), snap => {
+    if (!timing.list) { timing.list = performance.now() - T0; timing.saved = !!snap.metadata?.fromCache; }
     S.movies = new Map(snap.docs.map(d => [d.id, d.data()]));
     S.ready = true; render(); refreshStale(); applyLetterboxd();
   }, fail);
@@ -1002,11 +1009,11 @@ function renderDetail(id){
   if (!dlg.open) dlg.showModal();
 }
 
-const VERSION = 'Nov 27, 11:25 AM';
+const VERSION = 'Nov 27, 11:55 AM';
 /* GitHub lets browsers keep a copy of this page for about ten minutes, and home screen apps hold on
    even longer. On opening, and whenever the app comes back to the front, ask the server for a fresh
    copy; if it is a newer version, reload once to pick it up. */
-let lastUpdateCheck = 0;
+let lastUpdateCheck = 0, updateReady = false;
 async function checkForUpdate(){
   if (Date.now() - lastUpdateCheck < 60000) return;
   lastUpdateCheck = Date.now();
@@ -1018,11 +1025,18 @@ async function checkForUpdate(){
     try { tried = sessionStorage.getItem('marquee-update') || ''; } catch (e) { /* storage unavailable */ }
     if (tried === found) return;
     try { sessionStorage.setItem('marquee-update', found); } catch (e) { /* storage unavailable */ }
-    if (!dlg.open) location.reload();
+    updateReady = true;
+    if (!document.getElementById('updbar')) {
+      const bar = document.createElement('button');
+      bar.id = 'updbar'; bar.textContent = 'Update ready · tap to apply';
+      bar.addEventListener('click', () => location.reload());
+      document.body.appendChild(bar);
+    }
   } catch (e) { /* offline: try again next time */ }
 }
 checkForUpdate();
-document.addEventListener('visibilitychange', () => { if (!document.hidden) checkForUpdate(); });
+/* An update found earlier is applied the next time the app is brought back to the front. */
+document.addEventListener('visibilitychange', () => { if (document.hidden) return; if (updateReady && !dlg.open) location.reload(); else checkForUpdate(); });
 function fitViewport(){
   const v = window.visualViewport; if (!v) return;
   document.documentElement.style.setProperty('--vvh', v.height + 'px');
@@ -1196,7 +1210,7 @@ function renderSettings(){
     <button class="btn primary" data-act="savesettings">Save</button>
     <button class="btn" data-act="export">Export list</button>
     <button class="btn danger" data-act="signout">Sign out</button>
-    <p class="hint" style="text-align:center">Marquee version ${VERSION}</p>
+    <p class="hint" style="text-align:center">Marquee version ${VERSION}<br>${timing.list ? `Opened in ${(timing.list / 1000).toFixed(1)}s (sign-in ${(timing.auth / 1000).toFixed(1)}s, list ${timing.saved ? 'from this device' : 'from the internet'})` : ''}</p>
   </div>`;
   dlg.showModal();
 }
@@ -1326,6 +1340,7 @@ app.addEventListener('input', e => {
 app.addEventListener('keydown', e => { if (e.target.id === 'tabq' && e.key === 'Enter') e.target.blur(); });
 let listening = false;
 onAuthStateChanged(auth, user => {
+  if (!timing.auth) timing.auth = performance.now() - T0;
   S.user = user; render();
   if (user && !listening) { listening = true; listen(); }
 });

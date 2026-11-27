@@ -792,7 +792,9 @@ const plain = t => String(t || '').toLowerCase().normalize('NFD').replace(/[\u03
 function matchesQuery(m, q){
   const words = plain(q).split(' ').filter(Boolean);
   if (!words.length) return true;
-  const hay = ' ' + plain([m.title, m.year, m.director, ...(m.actors || m.cast || []), ...(m.studios || [])].join(' ')) + ' ';
+  /* Services too: the names shown in the app, the names as listed, and where an owned copy lives. */
+  const where = [...streamList(m).map(x => x.n), ...subs(m).map(x => baseName(x.n)), owned(m), store(m)?.name || ''];
+  const hay = ' ' + plain([m.title, m.year, m.director, ...(m.actors || m.cast || []), ...(m.studios || []), ...where].join(' ')) + ' ';
   return words.every(w => hay.includes(w));
 }
 function passFilt(m){
@@ -826,7 +828,7 @@ function sortBar(tab, full, shown){
       ${n ? `<button class="btn" data-act="filtclear">Clear filters</button>` : ''}
     </div>`;
   }
-  return `<div class="tabsearch"><input class="field" id="tabq" type="search" placeholder="Search title, director, actor or studio" value="${esc(S.filt.q)}" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" enterkeyhint="search">
+  return `<div class="tabsearch"><input class="field" id="tabq" type="search" placeholder="Title, director, actor, studio or service" value="${esc(S.filt.q)}" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" enterkeyhint="search">
       <button class="iconbtn" data-act="qclear" aria-label="Clear search">✕</button></div>
     <div class="chips sortbar">${sorts}<button class="chip ${n ? 'on' : ''}" data-act="filtopen" aria-expanded="${S.filt.open}">Filter${n ? ' · ' + n : ''}</button></div>
     ${panel}`;
@@ -1009,7 +1011,7 @@ function renderDetail(id){
   if (!dlg.open) dlg.showModal();
 }
 
-const VERSION = 'Nov 27, 11:55 AM';
+const VERSION = 'Nov 27, 12:05 PM';
 /* GitHub lets browsers keep a copy of this page for about ten minutes, and home screen apps hold on
    even longer. On opening, and whenever the app comes back to the front, ask the server for a fresh
    copy; if it is a newer version, reload once to pick it up. */
